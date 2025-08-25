@@ -14,16 +14,16 @@ async function register() {
   });
   
   console.log('🚀 Registering webhook...');
-  console.log('📡 URL: https://73d022e8c7a6.ngrok-free.app/webhooks/email\n');
+  console.log('📡 URL: https://thundering-full-monkey.mastra.cloud/webhooks/email\n');
   
   try {
     const webhook = await client.webhooks.create({
-      url: "https://73d022e8c7a6.ngrok-free.app/webhooks/email",
+      url: "https://thundering-full-monkey.mastra.cloud/webhooks/email",
       event_types: ["message.received"]  // Required parameter
     } as any);
     
     console.log('✅ Webhook registered successfully!');
-    console.log('   URL:', webhook.url || 'https://73d022e8c7a6.ngrok-free.app/webhooks/email');
+    console.log('   URL:', webhook.url || 'https://thundering-full-monkey.mastra.cloud/webhooks/email');
     console.log('   ID:', webhook.id || 'Created');
     console.log('\n📧 Send an email to: pitch@agentmail.to');
   } catch (error: any) {
