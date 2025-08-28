@@ -3,6 +3,43 @@ import { registerApiRoute } from '@mastra/core/server';
 import { PinoLogger } from '@mastra/loggers';
 import { LibSQLStore } from '@mastra/libsql';
 
+// AgentMail API configuration
+const AGENTMAIL_API_KEY = process.env.AGENTMAIL_API_KEY || '';
+const AGENTMAIL_API_BASE = 'https://api.agentmail.to/v0';
+
+/**
+ * Fetch the download URL for an attachment
+ */
+async function getAttachmentUrl(
+  inboxId: string,
+  threadId: string,
+  attachmentId: string
+): Promise<string | null> {
+  try {
+    const url = `${AGENTMAIL_API_BASE}/inboxes/${encodeURIComponent(inboxId)}/threads/${threadId}/attachments/${attachmentId}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${AGENTMAIL_API_KEY}`
+      },
+      redirect: 'manual' // Don't follow the redirect - we just want the URL
+    });
+    
+    if (response.status === 302) {
+      // Get the S3 URL from the Location header
+      const downloadUrl = response.headers.get('location');
+      return downloadUrl;
+    } else {
+      console.error(`Failed to get attachment URL. Status: ${response.status}`);
+      return null;
+    }
+  } catch (error) {
+    console.error('Error fetching attachment URL:', error);
+    return null;
+  }
+}
+
 export const mastra = new Mastra({
   storage: new LibSQLStore({
     // stores telemetry, evals, ... into memory storage, if it needs to persist, change to file:../mastra.db
