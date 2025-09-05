@@ -6,7 +6,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "mastra dev",
     "build": "mastra build",
-    "start": "mastra start"
+    "start": "mastra start",
+    "job": "node --loader ts-node/esm src/job-runner.ts"
   },
   "keywords": [],
   "author": "",
@@ -22,13 +23,16 @@
     "@mastra/libsql": "^0.13.4",
     "@mastra/loggers": "^0.10.7",
     "@mastra/memory": "^0.13.1",
+    "@neondatabase/serverless": "^1.0.1",
     "agentmail": "^0.0.54",
     "dotenv": "^17.2.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@mastra/mcp-docs-server": "^0.13.16",
     "@types/node": "^24.3.0",
     "mastra": "^0.10.23",
+    "ts-node": "^10.9.1",
     "typescript": "^5.9.2"
   }
 }
