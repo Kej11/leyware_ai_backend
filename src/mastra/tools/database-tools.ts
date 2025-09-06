@@ -45,7 +45,7 @@ export const lookupScoutTool = createTool({
           id: scout.id,
           name: scout.name,
           instructions: scout.instructions,
-          keywords: scout.keywords,
+          keywords: scout.keywords || [],
           platform: scout.platform,
           platform_config: scout.settings || {},
           organization_id: scout.organizationId,
@@ -196,6 +196,22 @@ export const batchStoreResultsTool = createTool({
         
         for (const result of batch) {
           try {
+            // Generate platform-specific external ID
+            let externalId = '';
+            let platform = result.platform || 'reddit';
+            
+            if (platform === 'reddit') {
+              externalId = result.metadata.post_id || `reddit_${Date.now()}_${Math.random()}`;
+            } else if (platform === 'itchio') {
+              // Use URL or create unique ID for itch.io
+              externalId = result.metadata.game_id || `itchio_${Date.now()}_${Math.random()}`;
+            } else if (platform === 'steam') {
+              // Use Steam app ID or create unique ID
+              externalId = result.metadata.appId || `steam_${Date.now()}_${Math.random()}`;
+            } else {
+              externalId = `${platform}_${Date.now()}_${Math.random()}`;
+            }
+
             await execute(
               `INSERT INTO scout_results (
                 "scoutId", "organizationId", platform, "externalId",
@@ -206,8 +222,8 @@ export const batchStoreResultsTool = createTool({
               [
                 scout_id,
                 organization_id,
-                'reddit',
-                result.metadata.post_id || `reddit_${Date.now()}_${Math.random()}`,
+                platform,
+                externalId,
                 result.source_url,
                 result.title,
                 result.content.substring(0, 200),
@@ -217,7 +233,7 @@ export const batchStoreResultsTool = createTool({
                 result.engagement_score,
                 result.relevance_score,
                 JSON.stringify(result.metadata),
-                'active',
+                'new',
                 result.created_at,
                 result.analysis_reasoning || 'AI analysis completed',
                 result.relevance_score
@@ -286,6 +302,334 @@ export const finalizeScoutRunTool = createTool({
       return { success: true };
     } catch (error) {
       console.error('❌ Failed to finalize scout run:', error);
+      return { success: false };
+    }
+  }
+});
+
+// NEW: Enhanced tools for intelligent scout workflow
+
+export const storeGameWithCommentsTool = createTool({
+  id: 'store-game-with-comments',
+  description: 'Store a game result with enhanced data including comments in platformData',
+  inputSchema: z.object({
+    scout_id: z.string().uuid(),
+    organization_id: z.string(),
+    game: z.object({
+      title: z.string(),
+      developer: z.string(),
+      url: z.string(),
+      price: z.string().optional(),
+      genre: z.string().optional(),
+      fullDescription: z.string().optional(),
+      screenshots: z.array(z.string()).optional(),
+      tags: z.array(z.string()).optional(),
+      platforms: z.array(z.string()).optional(),
+      rating: z.string().optional(),
+      fileSize: z.string().optional(),
+      releaseDate: z.string().optional(),
+      downloadCount: z.string().optional(),
+      comments: z.array(z.object({
+        author: z.string(),
+        content: z.string(),
+        date: z.string().optional(),
+        isDevReply: z.boolean().optional()
+      })).optional()
+    }),
+    decision: z.object({
+      reasoning: z.string(),
+      score: z.number(),
+      sentiment: z.string().optional()
+    })
+  }),
+  outputSchema: z.object({
+    result_id: z.string(),
+    comments_stored: z.number(),
+    success: z.boolean()
+  }),
+  execute: async ({ context }) => {
+    const { scout_id, organization_id, game, decision } = context;
+    
+    try {
+      console.log(`💾 Storing game with comments: ${game.title}`);
+      
+      // Calculate engagement score from comments
+      const engagementScore = game.comments ? 
+        Math.min(game.comments.length * 0.1, 1.0) : 0;
+      
+      // Calculate sentiment score from decision
+      const sentimentScore = decision.sentiment === 'positive' ? 0.8 :
+                           decision.sentiment === 'negative' ? 0.2 : 0.5;
+      
+      // Store main game result using existing schema
+      const resultId = await queryOne<{ id: string }>(
+        `INSERT INTO scout_results (
+          "scoutId", "organizationId", platform, "externalId",
+          url, title, description, content, author,
+          "engagementScore", "relevanceScore", "sentimentScore", "platformData",
+          status, "foundAt", "aiSummary", "aiConfidenceScore", "processedAt"
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15, $16, NOW()
+        ) RETURNING id`,
+        [
+          scout_id,
+          organization_id,
+          'itchio',
+          `itchio_${game.url.split('/').pop()}_${Date.now()}`,
+          game.url,
+          game.title,
+          game.fullDescription?.substring(0, 500) || game.title,
+          game.fullDescription || '',
+          game.developer,
+          engagementScore,
+          decision.score,
+          sentimentScore,
+          JSON.stringify({
+            price: game.price,
+            genre: game.genre,
+            screenshots: game.screenshots,
+            tags: game.tags,
+            platforms: game.platforms,
+            rating: game.rating,
+            fileSize: game.fileSize,
+            releaseDate: game.releaseDate,
+            downloadCount: game.downloadCount,
+            comments: game.comments,
+            commentsCount: game.comments?.length || 0,
+            hasDevReplies: game.comments?.some(c => c.isDevReply) || false,
+            decisionReasoning: decision.reasoning,
+            sentiment: decision.sentiment
+          }),
+          'new',
+          decision.reasoning,
+          decision.score
+        ]
+      );
+
+      if (!resultId) {
+        throw new Error('Failed to get result ID after insertion');
+      }
+
+      const commentsStored = game.comments?.length || 0;
+      console.log(`✅ Stored game: ${game.title} with ${commentsStored} comments in platformData`);
+      
+      return {
+        result_id: resultId.id,
+        comments_stored: commentsStored,
+        success: true
+      };
+      
+    } catch (error) {
+      console.error('❌ Failed to store game with comments:', error);
+      return {
+        result_id: '',
+        comments_stored: 0,
+        success: false
+      };
+    }
+  }
+});
+
+export const storeScoutDecisionTool = createTool({
+  id: 'store-scout-decision',
+  description: 'Store a decision made by the intelligent scout workflow in runConfig',
+  inputSchema: z.object({
+    run_id: z.string().uuid(),
+    stage: z.enum(['listing', 'investigation', 'storage']),
+    item_identifier: z.string(),
+    decision: z.enum(['investigate', 'skip', 'store', 'discard']),
+    reasoning: z.string().optional(),
+    score: z.number().optional(),
+    item_data: z.any().optional()
+  }),
+  outputSchema: z.object({
+    success: z.boolean()
+  }),
+  execute: async ({ context }) => {
+    const { run_id, stage, item_identifier, decision, reasoning, score, item_data } = context;
+    
+    try {
+      // Get current runConfig
+      const currentRun = await queryOne<{ runConfig: any }>(
+        `SELECT "runConfig" FROM scout_runs WHERE id = $1`,
+        [run_id]
+      );
+      
+      const existingConfig = currentRun?.runConfig || {};
+      const decisions = existingConfig.decisions || [];
+      
+      // Add new decision
+      decisions.push({
+        stage,
+        item_identifier,
+        decision,
+        reasoning: reasoning || null,
+        score: score || null,
+        item_data: item_data || null,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Update runConfig with new decisions array
+      const updatedConfig = {
+        ...existingConfig,
+        decisions
+      };
+      
+      await execute(
+        `UPDATE scout_runs SET "runConfig" = $1 WHERE id = $2`,
+        [JSON.stringify(updatedConfig), run_id]
+      );
+
+      return { success: true };
+      
+    } catch (error) {
+      console.error('❌ Failed to store scout decision:', error);
+      return { success: false };
+    }
+  }
+});
+
+export const batchStoreDecisionsTool = createTool({
+  id: 'batch-store-decisions',
+  description: 'Store multiple scout decisions in batch in runConfig',
+  inputSchema: z.object({
+    run_id: z.string().uuid(),
+    decisions: z.array(z.object({
+      stage: z.enum(['listing', 'investigation', 'storage']),
+      item_identifier: z.string(),
+      decision: z.enum(['investigate', 'skip', 'store', 'discard']),
+      reasoning: z.string().optional(),
+      score: z.number().optional(),
+      item_data: z.any().optional()
+    }))
+  }),
+  outputSchema: z.object({
+    decisions_stored: z.number(),
+    success: z.boolean()
+  }),
+  execute: async ({ context }) => {
+    const { run_id, decisions } = context;
+    
+    try {
+      console.log(`💾 Storing ${decisions.length} scout decisions...`);
+      
+      // Get current runConfig
+      const currentRun = await queryOne<{ runConfig: any }>(
+        `SELECT "runConfig" FROM scout_runs WHERE id = $1`,
+        [run_id]
+      );
+      
+      const existingConfig = currentRun?.runConfig || {};
+      const existingDecisions = existingConfig.decisions || [];
+      
+      // Add all new decisions with timestamps
+      const newDecisions = decisions.map(decision => ({
+        stage: decision.stage,
+        item_identifier: decision.item_identifier,
+        decision: decision.decision,
+        reasoning: decision.reasoning || null,
+        score: decision.score || null,
+        item_data: decision.item_data || null,
+        timestamp: new Date().toISOString()
+      }));
+      
+      // Update runConfig with combined decisions
+      const updatedConfig = {
+        ...existingConfig,
+        decisions: [...existingDecisions, ...newDecisions]
+      };
+      
+      await execute(
+        `UPDATE scout_runs SET "runConfig" = $1 WHERE id = $2`,
+        [JSON.stringify(updatedConfig), run_id]
+      );
+      
+      console.log(`✅ Stored ${decisions.length} decisions in runConfig`);
+      
+      return {
+        decisions_stored: decisions.length,
+        success: true
+      };
+      
+    } catch (error) {
+      console.error('❌ Failed to batch store decisions:', error);
+      return {
+        decisions_stored: 0,
+        success: false
+      };
+    }
+  }
+});
+
+export const updateRunProgressTool = createTool({
+  id: 'update-run-progress',
+  description: 'Update scout run progress with intelligent workflow metrics',
+  inputSchema: z.object({
+    run_id: z.string().uuid(),
+    status: z.enum(['initializing', 'searching', 'analyzing', 'storing', 'completed', 'failed']).optional(),
+    results_found: z.number().optional(),
+    results_processed: z.number().optional(),
+    progress_data: z.any().optional()
+  }),
+  outputSchema: z.object({
+    success: z.boolean()
+  }),
+  execute: async ({ context }) => {
+    const { run_id, status, results_found, results_processed, progress_data } = context;
+    
+    try {
+      // Build dynamic query using existing scout_runs columns
+      const updates = [];
+      const values = [];
+      let paramIndex = 1;
+      
+      if (status) {
+        updates.push(`status = $${paramIndex++}`);
+        values.push(status);
+      }
+      
+      if (results_found !== undefined) {
+        updates.push(`"resultsFound" = $${paramIndex++}`);
+        values.push(results_found);
+      }
+      
+      if (results_processed !== undefined) {
+        updates.push(`"resultsProcessed" = $${paramIndex++}`);
+        values.push(results_processed);
+      }
+      
+      if (progress_data) {
+        // Get current runConfig and merge with progress_data
+        const currentRun = await queryOne<{ runConfig: any }>(
+          `SELECT "runConfig" FROM scout_runs WHERE id = $${paramIndex}`,
+          [run_id]
+        );
+        
+        const existingConfig = currentRun?.runConfig || {};
+        const updatedConfig = {
+          ...existingConfig,
+          progress: {
+            ...existingConfig.progress,
+            ...progress_data,
+            lastUpdated: new Date().toISOString()
+          }
+        };
+        
+        updates.push(`"runConfig" = $${paramIndex++}`);
+        values.push(JSON.stringify(updatedConfig));
+      }
+      
+      values.push(run_id);
+      
+      if (updates.length > 0) {
+        const query = `UPDATE scout_runs SET ${updates.join(', ')} WHERE id = $${paramIndex}`;
+        await execute(query, values);
+      }
+      
+      return { success: true };
+      
+    } catch (error) {
+      console.error('❌ Failed to update run progress:', error);
       return { success: false };
     }
   }

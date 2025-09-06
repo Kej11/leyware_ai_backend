@@ -23,6 +23,7 @@
     "@mastra/libsql": "^0.13.4",
     "@mastra/loggers": "^0.10.7",
     "@mastra/memory": "^0.13.1",
+    "@mendable/firecrawl-js": "^4.3.3",
     "@neondatabase/serverless": "^1.0.1",
     "agentmail": "^0.0.54",
     "dotenv": "^17.2.1",
