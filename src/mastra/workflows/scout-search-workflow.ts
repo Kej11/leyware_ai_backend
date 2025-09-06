@@ -8,6 +8,8 @@ import {
   finalizeScoutRunTool
 } from '../tools/database-tools';
 import { redditSearchTool } from '../tools/platform-search/reddit-search-tool';
+import { itchioSearchTool } from '../tools/platform-search/itchio-search-tool';
+import { steamSearchTool } from '../tools/platform-search/steam-search-tool';
 import { generateSearchStrategy } from '../agents/search-planning-agent';
 import { batchAnalyzeContent } from '../agents/content-analysis-agent';
 
@@ -89,6 +91,24 @@ const executePlatformSearchStep = createStep({
       
       results = searchResult.results;
       totalSearched = searchResult.total_searched;
+    } else if (strategy.platform === 'itchio') {
+      const searchResult = await itchioSearchTool.execute({
+        context: { strategy },
+        runtimeContext: {} as any
+      });
+      
+      results = searchResult.results;
+      totalSearched = searchResult.total_searched;
+    } else if (strategy.platform === 'steam') {
+      const searchResult = await steamSearchTool.execute({
+        context: { strategy },
+        runtimeContext: {} as any
+      });
+      
+      results = searchResult.results;
+      totalSearched = searchResult.total_searched;
+    } else {
+      throw new Error(`Unsupported platform: ${strategy.platform}`);
     }
     
     console.log(`📊 Found ${totalSearched} results`);
