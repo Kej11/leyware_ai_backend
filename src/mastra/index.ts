@@ -4,6 +4,7 @@ import { LibSQLStore } from '@mastra/libsql';
 import { registerApiRoute } from '@mastra/core/server';
 import { scoutSearchWorkflow } from './workflows/scout-search-workflow';
 import { emailProcessingWorkflow } from './workflows/email-processing-workflow';
+import { manualPDFParseWorkflow } from './workflows/manual-pdf-parse-workflow';
 import { searchPlanningAgent } from './agents/search-planning-agent';
 import { contentAnalysisAgent } from './agents/content-analysis-agent';
 import { scoutWorkflowAgent } from './agents/scout-workflow-agent';
@@ -12,7 +13,8 @@ import { emailWebhookAgent } from './agents/email-webhook-agent';
 export const mastra = new Mastra({
   workflows: { 
     scoutSearchWorkflow,
-    emailProcessingWorkflow
+    emailProcessingWorkflow,
+    manualPDFParseWorkflow
   },
   agents: {
     searchPlanningAgent,
