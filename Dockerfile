@@ -30,16 +30,8 @@ COPY src/job-runner.ts .mastra/output/job-runner.mjs
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S mastra -u 1001
 
-# Create entry point script
-RUN echo '#!/bin/sh\n\
-PORT=${PORT:-8080}\n\
-if [ "$MODE" = "job" ]; then\n\
-  echo "🚀 Starting in Job mode..."\n\
-  node .mastra/output/job-runner.mjs\n\
-else\n\
-  echo "🌐 Starting in Service mode on port $PORT..."\n\
-  node --import=./.mastra/output/instrumentation.mjs .mastra/output/index.mjs\n\
-fi' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+# Create entry point script with proper line endings
+RUN printf '#!/bin/sh\nPORT=${PORT:-8080}\nif [ "$MODE" = "job" ]; then\n  echo "🚀 Starting in Job mode..."\n  node .mastra/output/job-runner.mjs\nelse\n  echo "🌐 Starting in Service mode on port $PORT..."\n  node --import=./.mastra/output/instrumentation.mjs .mastra/output/index.mjs\nfi\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Change ownership to non-root user
 RUN chown -R mastra:nodejs /app
