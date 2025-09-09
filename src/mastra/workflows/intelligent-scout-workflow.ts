@@ -45,10 +45,15 @@ const generateStrategyStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🎯 Generating search strategy for ${scout.platform}...`);
+    logger.info('Generating search strategy', { 
+      platform: scout.platform,
+      runId: run_id,
+      scoutName: scout.name
+    });
     
     const strategy = await generateSearchStrategy(
       scout.instructions,
@@ -78,10 +83,15 @@ const scrapeListingsStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { strategy, scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`📋 Step 1: Scraping game listings from ${strategy.platform}...`);
+    logger.info('Starting game listings scrape', { 
+      platform: strategy.platform,
+      runId: run_id,
+      step: 'scrape-listings'
+    });
     
     await updateRunProgressStep.execute({
       context: {
@@ -101,7 +111,7 @@ const scrapeListingsStep = createStep({
     
     const listings = await searchTool.scrapeGameListings(strategy);
     
-    console.log(`📦 Found ${listings.length} game listings`);
+    logger.info('Game listings found', { count: listings.length, runId: run_id });
     
     // Update run progress
     await updateRunProgressStep.execute({
@@ -134,10 +144,15 @@ const investigationDecisionStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { listings, scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🧠 Step 2: Making investigation decisions for ${listings.length} games...`);
+    logger.info('Making investigation decisions', { 
+      gameCount: listings.length, 
+      runId: run_id,
+      step: 'investigation-decision'
+    });
     
     await updateRunProgressStep.execute({
       context: {
@@ -151,6 +166,7 @@ const investigationDecisionStep = createStep({
     const maxInvestigations = Math.min(Math.ceil(listings.length * 0.4), 10);
     
     const investigationDecisions = await decideInvestigation(
+      mastra,
       scout.instructions,
       scout.keywords,
       listings,
@@ -180,7 +196,11 @@ const investigationDecisionStep = createStep({
       .map(d => d.gameUrl)
       .filter(url => url && url.length > 0);
     
-    console.log(`📊 Investigation decisions: ${gamesToInvestigate.length}/${listings.length} games selected for detailed investigation`);
+    logger.info('Investigation decisions completed', {
+      selected: gamesToInvestigate.length,
+      total: listings.length,
+      runId: run_id
+    });
     
     await updateRunProgressStep.execute({
       context: {
@@ -216,11 +236,12 @@ const scrapeDetailedGamesStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { games_to_investigate, scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
     if (games_to_investigate.length === 0) {
-      console.log(`⚠️ No games selected for detailed investigation`);
+      logger.warn('No games selected for detailed investigation', { runId: run_id });
       return {
         detailed_games: [],
         scout,
@@ -228,7 +249,11 @@ const scrapeDetailedGamesStep = createStep({
       };
     }
     
-    console.log(`🔍 Step 3: Scraping detailed data for ${games_to_investigate.length} selected games...`);
+    logger.info('Starting detailed game scraping', {
+      gameCount: games_to_investigate.length,
+      runId: run_id,
+      step: 'scrape-detailed-games'
+    });
     
     // Select appropriate search tool based on platform
     let searchTool;
@@ -242,7 +267,11 @@ const scrapeDetailedGamesStep = createStep({
     
     const totalComments = detailedGames.reduce((sum, game) => sum + (game.commentCount || 0), 0);
     
-    console.log(`📦 Successfully scraped ${detailedGames.length} games with ${totalComments} total comments`);
+    logger.info('Detailed scraping completed', {
+      gamesScraped: detailedGames.length,
+      totalComments,
+      runId: run_id
+    });
     
     await updateRunProgressStep.execute({
       context: {
@@ -277,11 +306,12 @@ const storageDecisionStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { detailed_games, scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
     if (detailed_games.length === 0) {
-      console.log(`⚠️ No detailed games to evaluate for storage`);
+      logger.warn('No detailed games to evaluate for storage', { runId: run_id });
       return {
         storage_decisions: [],
         games_to_store: [],
@@ -290,7 +320,12 @@ const storageDecisionStep = createStep({
       };
     }
     
-    console.log(`🧠 Step 4: Making storage decisions for ${detailed_games.length} detailed games...`);
+    logger.info('Making storage decisions', {
+      gameCount: detailed_games.length,
+      runId: run_id,
+      step: 'storage-decision',
+      qualityThreshold: scout.quality_threshold
+    });
     
     await updateRunProgressStep.execute({
       context: {
@@ -301,6 +336,7 @@ const storageDecisionStep = createStep({
     });
 
     const storageDecisions = await decideStorage(
+      mastra,
       scout.instructions,
       scout.keywords,
       detailed_games,
@@ -330,7 +366,11 @@ const storageDecisionStep = createStep({
       return decision?.shouldStore;
     });
     
-    console.log(`📊 Storage decisions: ${gamesToStore.length}/${detailed_games.length} games approved for storage`);
+    logger.info('Storage decisions completed', {
+      approved: gamesToStore.length,
+      total: detailed_games.length,
+      runId: run_id
+    });
     
     await updateRunProgressStep.execute({
       context: {
@@ -366,11 +406,12 @@ const storeApprovedGamesStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { games_to_store, storage_decisions, scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
     if (games_to_store.length === 0) {
-      console.log(`⚠️ No games approved for storage`);
+      logger.warn('No games approved for storage', { runId: run_id });
       return {
         stored_count: 0,
         scout,
@@ -378,7 +419,11 @@ const storeApprovedGamesStep = createStep({
       };
     }
     
-    console.log(`💾 Step 5: Storing ${games_to_store.length} approved games with comments...`);
+    logger.info('Starting game storage', {
+      gameCount: games_to_store.length,
+      runId: run_id,
+      step: 'store-approved-games'
+    });
     
     let storedCount = 0;
     
@@ -389,7 +434,7 @@ const storeApprovedGamesStep = createStep({
         );
         
         if (!decision) {
-          console.warn(`⚠️ No decision found for game: ${game.title}`);
+          logger.warn('No decision found for game', { gameTitle: game.title, runId: run_id });
           continue;
         }
         
@@ -409,17 +454,29 @@ const storeApprovedGamesStep = createStep({
         
         if (result.success) {
           storedCount++;
-          console.log(`✅ Stored: ${game.title} (${result.comments_stored} comments)`);
+          logger.info('Game stored successfully', {
+            gameTitle: game.title,
+            commentsStored: result.comments_stored,
+            runId: run_id
+          });
         } else {
-          console.error(`❌ Failed to store: ${game.title}`);
+          logger.error('Failed to store game', { gameTitle: game.title, runId: run_id });
         }
         
       } catch (error) {
-        console.error(`❌ Error storing game ${game.title}:`, error);
+        logger.error('Error storing game', {
+          gameTitle: game.title,
+          runId: run_id,
+          error: error.message
+        });
       }
     }
     
-    console.log(`🎉 Storage completed: ${storedCount}/${games_to_store.length} games successfully stored`);
+    logger.info('Storage completed', {
+      stored: storedCount,
+      total: games_to_store.length,
+      runId: run_id
+    });
     
     return {
       stored_count: storedCount,

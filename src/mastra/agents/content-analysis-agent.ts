@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
+import { Mastra } from '@mastra/core';
 
 export const contentAnalysisAgent = new Agent({
   name: 'ContentAnalysisAgent',
@@ -25,6 +26,7 @@ export const contentAnalysisAgent = new Agent({
 });
 
 export async function analyzeContentRelevance(
+  mastra: Mastra,
   instructions: string,
   keywords: string[],
   content: {
@@ -51,14 +53,31 @@ Rate the relevance on a scale of 0.0 to 1.0 and provide brief reasoning.`;
     })
   });
 
+  const logger = mastra.getLogger();
+  
   if (!response.object) {
+    logger.warn('Content analysis failed, using default score', {
+      contentTitle: content.title,
+      platform: content.metadata.subreddit ? `Reddit - r/${content.metadata.subreddit}` : 'Unknown'
+    });
     return { relevance_score: 0.5, reasoning: 'Analysis failed, using default score' };
   }
+
+  logger.info('Content analysis completed', {
+    contentTitle: content.title,
+    relevanceScore: response.object.relevance_score,
+    platform: content.metadata.subreddit ? `Reddit - r/${content.metadata.subreddit}` : 'Unknown',
+    engagement: {
+      score: content.metadata.score || 0,
+      comments: content.metadata.num_comments || 0
+    }
+  });
 
   return response.object;
 }
 
 export async function batchAnalyzeContent(
+  mastra: Mastra,
   instructions: string,
   keywords: string[],
   contents: Array<{
@@ -68,11 +87,17 @@ export async function batchAnalyzeContent(
   }>,
   qualityThreshold: number = 0.7
 ): Promise<Array<any>> {
+  const logger = mastra.getLogger();
   const analyzed = [];
+  
+  logger.info('Starting batch content analysis', {
+    totalContent: contents.length,
+    qualityThreshold
+  });
   
   for (const content of contents) {
     try {
-      const analysis = await analyzeContentRelevance(instructions, keywords, content);
+      const analysis = await analyzeContentRelevance(mastra, instructions, keywords, content);
       
       if (analysis.relevance_score >= qualityThreshold) {
         analyzed.push({
@@ -82,7 +107,12 @@ export async function batchAnalyzeContent(
         });
       }
     } catch (error) {
-      console.error('Content analysis error:', error);
+      logger.error('Content analysis error', {
+        error: error instanceof Error ? error.message : String(error),
+        contentTitle: content.title,
+        platform: content.metadata.subreddit ? `Reddit - r/${content.metadata.subreddit}` : 'Unknown'
+      });
+      
       if (content.metadata.score && content.metadata.score > 10) {
         analyzed.push({
           ...content,
@@ -92,6 +122,16 @@ export async function batchAnalyzeContent(
       }
     }
   }
+  
+  const highRelevanceCount = analyzed.filter(a => a.relevance_score >= 0.8).length;
+  
+  logger.info('Batch content analysis completed', {
+    analyzedCount: analyzed.length,
+    totalProcessed: contents.length,
+    passedThreshold: analyzed.length,
+    highRelevanceCount,
+    averageScore: analyzed.length > 0 ? parseFloat((analyzed.reduce((sum, a) => sum + a.relevance_score, 0) / analyzed.length).toFixed(2)) : 0
+  });
   
   return analyzed.sort((a, b) => b.relevance_score - a.relevance_score);
 }

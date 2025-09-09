@@ -43,12 +43,16 @@ const validateWebhookStep = createStep({
     organizationId: z.string().optional(),
     userId: z.string().optional()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { webhook, organizationId, userId } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`📧 Validating webhook for message: ${webhook.message.id}`);
-    console.log(`📨 From: ${webhook.message.from}`);
-    console.log(`📝 Subject: ${webhook.message.subject}`);
+    logger.info('Validating webhook for message', {
+      messageId: webhook.message.id,
+      from: webhook.message.from,
+      subject: webhook.message.subject,
+      step: 'validate-webhook'
+    });
     
     // Check if event type is supported
     if (webhook.event !== 'message.received') {
@@ -78,9 +82,13 @@ const validateWebhookStep = createStep({
       };
     }
 
-    console.log(`📎 Found ${pdfAttachments.length} PDF attachment(s)`);
-    pdfAttachments.forEach((pdf: any) => {
-      console.log(`  - ${pdf.filename} (${(pdf.size / 1024).toFixed(1)} KB)`);
+    logger.info('Found PDF attachments', {
+      pdfCount: pdfAttachments.length,
+      attachments: pdfAttachments.map((pdf: any) => ({
+        filename: pdf.filename,
+        sizeKB: (pdf.size / 1024).toFixed(1)
+      })),
+      step: 'validate-webhook'
     });
 
     return {
@@ -122,15 +130,23 @@ const extractPdfDataStep = createStep({
     organizationId: z.string().optional(),
     userId: z.string().optional()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { pdfAttachments, webhook, organizationId, userId } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🔍 Starting extraction for ${pdfAttachments.length} PDF(s)`);
+    logger.info('Starting PDF extraction', {
+      pdfCount: pdfAttachments.length,
+      step: 'extract-pdf-data'
+    });
     
     const extractions = [];
     
     for (const pdf of pdfAttachments) {
-      console.log(`📄 Processing: ${pdf.filename}`);
+      logger.info('Processing PDF file', {
+        filename: pdf.filename,
+        sizeKB: (pdf.size / 1024).toFixed(1),
+        step: 'extract-pdf-data'
+      });
       
       try {
         const result = await pdfExtractionTool.execute({
@@ -148,13 +164,28 @@ const extractPdfDataStep = createStep({
         });
         
         if (result.success) {
-          console.log(`✅ Successfully extracted data from ${pdf.filename}`);
+          logger.info('Successfully extracted data from PDF', {
+            filename: pdf.filename,
+            extractionModel: result.extractionModel,
+            extractionDate: result.extractionDate,
+            step: 'extract-pdf-data'
+          });
         } else {
-          console.log(`❌ Failed to extract data from ${pdf.filename}: ${result.error}`);
+          logger.error('Failed to extract data from PDF', {
+            filename: pdf.filename,
+            error: result.error,
+            extractionModel: result.extractionModel,
+            step: 'extract-pdf-data'
+          });
         }
         
       } catch (error) {
-        console.error(`💥 Unexpected error processing ${pdf.filename}:`, error);
+        logger.error('Unexpected error processing PDF', {
+          filename: pdf.filename,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
+          step: 'extract-pdf-data'
+        });
         extractions.push({
           filename: pdf.filename,
           success: false,
@@ -166,7 +197,12 @@ const extractPdfDataStep = createStep({
     }
     
     const successCount = extractions.filter(e => e.success).length;
-    console.log(`🎯 Extraction completed: ${successCount}/${extractions.length} successful`);
+    logger.info('PDF extraction completed', {
+      totalFiles: extractions.length,
+      successfulExtractions: successCount,
+      failedExtractions: extractions.length - successCount,
+      step: 'extract-pdf-data'
+    });
     
     return {
       extractions,
@@ -204,10 +240,14 @@ const storeDataStep = createStep({
     totalStored: z.number(),
     webhook: z.any()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { extractions, webhook, organizationId, userId } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`💾 Storing ${extractions.length} extraction results`);
+    logger.info('Starting data storage', {
+      extractionCount: extractions.length,
+      step: 'store-extracted-data'
+    });
     
     const storedRecords = [];
     
@@ -268,13 +308,21 @@ const storeDataStep = createStep({
           RETURNING id, "fileName"
         `;
         
-        console.log(`🔄 Inserting record for ${extraction.filename}`);
-        console.log(`📝 Game Title: ${extraction.extractedData?.gameTitle || 'N/A'}`);
-        console.log(`🏢 Developer: ${extraction.extractedData?.developerName || 'N/A'}`);
+        logger.info('Inserting record for extraction', {
+          filename: extraction.filename,
+          gameTitle: extraction.extractedData?.gameTitle || 'N/A',
+          developerName: extraction.extractedData?.developerName || 'N/A',
+          pitchId,
+          step: 'store-extracted-data'
+        });
         
         // Execute the insert using Neon MCP (this would need to be implemented in the actual execution)
         // For now, we'll simulate success
-        console.log(`✅ Successfully stored record with ID: ${pitchId}`);
+        logger.info('Successfully stored record', {
+          pitchId,
+          filename: extraction.filename,
+          step: 'store-extracted-data'
+        });
         
         storedRecords.push({
           id: pitchId,
@@ -283,7 +331,12 @@ const storeDataStep = createStep({
         });
         
       } catch (error) {
-        console.error(`❌ Failed to store record for ${extraction.filename}:`, error);
+        logger.error('Failed to store record', {
+          filename: extraction.filename,
+          error: error instanceof Error ? error.message : 'Unknown database error',
+          stack: error instanceof Error ? error.stack : undefined,
+          step: 'store-extracted-data'
+        });
         storedRecords.push({
           id: '',
           filename: extraction.filename,
@@ -294,7 +347,12 @@ const storeDataStep = createStep({
     }
     
     const successCount = storedRecords.filter(r => r.success).length;
-    console.log(`💾 Storage completed: ${successCount}/${storedRecords.length} records stored`);
+    logger.info('Data storage completed', {
+      totalRecords: storedRecords.length,
+      successfullyStored: successCount,
+      failedToStore: storedRecords.length - successCount,
+      step: 'store-extracted-data'
+    });
     
     return {
       storedRecords,

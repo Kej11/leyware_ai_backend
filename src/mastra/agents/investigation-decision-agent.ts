@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { GameListing, InvestigationDecision } from '../database/schemas';
+import { Mastra } from '@mastra/core';
 
 export const investigationDecisionAgent = new Agent({
   name: 'InvestigationDecisionAgent',
@@ -36,17 +37,25 @@ export const investigationDecisionAgent = new Agent({
 });
 
 export async function decideInvestigation(
+  mastra: Mastra,
   scoutInstructions: string,
   scoutKeywords: string[],
   gameListings: GameListing[],
   maxInvestigations?: number
 ): Promise<InvestigationDecision[]> {
   
+  const logger = mastra.getLogger();
+  
   if (gameListings.length === 0) {
+    logger.info('No game listings to process for investigation decisions');
     return [];
   }
 
-  console.log(`🧠 Making investigation decisions for ${gameListings.length} games...`);
+  logger.info('Making investigation decisions', {
+    gameCount: gameListings.length,
+    maxInvestigations,
+    stage: 'investigation-decision'
+  });
   
   const prompt = `SCOUT MISSION: ${scoutInstructions}
 
@@ -93,7 +102,10 @@ Return your decisions with scores and detailed reasoning for each game.`;
     });
 
     if (!response.object?.decisions) {
-      console.warn('⚠️ Investigation agent returned no decisions, defaulting to basic filtering');
+      logger.warn('Investigation agent returned no decisions, using fallback logic', {
+        gameCount: gameListings.length,
+        maxInvestigations
+      });
       // Fallback: investigate games with meaningful descriptions
       return gameListings.map(game => ({
         gameUrl: game.url,
@@ -120,16 +132,24 @@ Return your decisions with scores and detailed reasoning for each game.`;
     }
 
     const investigateCount = sortedDecisions.filter(d => d.shouldInvestigate).length;
-    console.log(`📊 Investigation decisions: ${investigateCount}/${gameListings.length} games selected for detailed investigation`);
-    
-    // Log decision summary
     const avgScore = sortedDecisions.reduce((sum, d) => sum + d.score, 0) / sortedDecisions.length;
-    console.log(`📊 Average investigation score: ${avgScore.toFixed(2)}`);
+    
+    logger.info('Investigation decisions completed', {
+      selectedCount: investigateCount,
+      totalCount: gameListings.length,
+      averageScore: parseFloat(avgScore.toFixed(2)),
+      maxInvestigations,
+      selectionRate: parseFloat((investigateCount / gameListings.length * 100).toFixed(1))
+    });
     
     return sortedDecisions;
 
   } catch (error) {
-    console.error('❌ Error in investigation decision agent:', error);
+    logger.error('Error in investigation decision agent', {
+      error: error instanceof Error ? error.message : String(error),
+      gameCount: gameListings.length,
+      maxInvestigations
+    });
     
     // Fallback strategy: investigate top games by description length/quality
     const fallbackDecisions = gameListings.map(game => {
@@ -151,6 +171,7 @@ Return your decisions with scores and detailed reasoning for each game.`;
 }
 
 export async function batchInvestigationDecisions(
+  mastra: Mastra,
   scoutInstructions: string,
   scoutKeywords: string[],
   gameListings: GameListing[],
@@ -158,19 +179,35 @@ export async function batchInvestigationDecisions(
   maxInvestigations?: number
 ): Promise<InvestigationDecision[]> {
   
+  const logger = mastra.getLogger();
+  
   if (gameListings.length <= batchSize) {
-    return decideInvestigation(scoutInstructions, scoutKeywords, gameListings, maxInvestigations);
+    return decideInvestigation(mastra, scoutInstructions, scoutKeywords, gameListings, maxInvestigations);
   }
 
-  console.log(`🔄 Processing ${gameListings.length} games in batches of ${batchSize}...`);
+  logger.info('Processing games for investigation decisions in batches', {
+    totalGames: gameListings.length,
+    batchSize,
+    totalBatches: Math.ceil(gameListings.length / batchSize),
+    maxInvestigations
+  });
   
   const allDecisions: InvestigationDecision[] = [];
   
   for (let i = 0; i < gameListings.length; i += batchSize) {
     const batch = gameListings.slice(i, i + batchSize);
-    console.log(`📦 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(gameListings.length / batchSize)}`);
+    const currentBatch = Math.floor(i / batchSize) + 1;
+    const totalBatches = Math.ceil(gameListings.length / batchSize);
+    
+    logger.info('Processing investigation batch', {
+      batchNumber: currentBatch,
+      totalBatches,
+      batchSize: batch.length,
+      startIndex: i
+    });
     
     const batchDecisions = await decideInvestigation(
+      mastra,
       scoutInstructions, 
       scoutKeywords, 
       batch,
@@ -198,7 +235,13 @@ export async function batchInvestigationDecisions(
   }
   
   const finalInvestigateCount = sortedDecisions.filter(d => d.shouldInvestigate).length;
-  console.log(`📊 Final investigation decisions: ${finalInvestigateCount}/${gameListings.length} games selected`);
+  
+  logger.info('Batch investigation decisions completed', {
+    selectedCount: finalInvestigateCount,
+    totalCount: gameListings.length,
+    selectionRate: parseFloat((finalInvestigateCount / gameListings.length * 100).toFixed(1)),
+    maxInvestigations
+  });
   
   return sortedDecisions;
 }

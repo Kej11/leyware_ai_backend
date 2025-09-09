@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { DetailedGame, StorageDecision } from '../database/schemas';
+import { Mastra } from '@mastra/core';
 
 export const storageDecisionAgent = new Agent({
   name: 'StorageDecisionAgent',
@@ -83,18 +84,25 @@ function analyzeSentiment(comments: Array<{ content: string; isDevReply?: boolea
 }
 
 export async function decideStorage(
+  mastra: Mastra,
   scoutInstructions: string,
   scoutKeywords: string[],
   detailedGames: DetailedGame[],
   qualityThreshold: number = 0.7
 ): Promise<StorageDecision[]> {
   
+  const logger = mastra.getLogger();
+  
   if (detailedGames.length === 0) {
+    logger.info('No detailed games to process for storage decisions');
     return [];
   }
 
-  console.log(`🧠 Making storage decisions for ${detailedGames.length} detailed games...`);
-  console.log(`📊 Quality threshold: ${qualityThreshold}`);
+  logger.info('Making storage decisions', {
+    gameCount: detailedGames.length,
+    qualityThreshold,
+    stage: 'storage-decision'
+  });
   
   const prompt = `SCOUT MISSION: ${scoutInstructions}
 
@@ -159,7 +167,10 @@ Return detailed decisions with scores and comprehensive reasoning for each game.
     });
 
     if (!response.object?.decisions) {
-      console.warn('⚠️ Storage agent returned no decisions, using fallback logic');
+      logger.warn('Storage agent returned no decisions, using fallback logic', {
+        gameCount: detailedGames.length,
+        qualityThreshold
+      });
       
       // Fallback: store games with good engagement or high ratings
       return detailedGames.map(game => {
@@ -210,20 +221,31 @@ Return detailed decisions with scores and comprehensive reasoning for each game.
     const storeCount = decisions.filter(d => d.shouldStore).length;
     const avgScore = decisions.reduce((sum, d) => sum + d.score, 0) / decisions.length;
     
-    console.log(`📊 Storage decisions: ${storeCount}/${detailedGames.length} games selected for storage`);
-    console.log(`📊 Average storage score: ${avgScore.toFixed(2)}`);
-    
     // Log quality breakdown
     const highQuality = decisions.filter(d => d.score >= 0.8).length;
     const mediumQuality = decisions.filter(d => d.score >= 0.6 && d.score < 0.8).length;
     const lowQuality = decisions.filter(d => d.score < 0.6).length;
     
-    console.log(`📊 Quality breakdown: ${highQuality} high (0.8+), ${mediumQuality} medium (0.6-0.8), ${lowQuality} low (<0.6)`);
+    logger.info('Storage decisions completed', {
+      selectedCount: storeCount,
+      totalCount: detailedGames.length,
+      averageScore: parseFloat(avgScore.toFixed(2)),
+      qualityBreakdown: {
+        high: highQuality,
+        medium: mediumQuality,
+        low: lowQuality
+      },
+      threshold: qualityThreshold
+    });
     
     return decisions.sort((a, b) => b.score - a.score);
 
   } catch (error) {
-    console.error('❌ Error in storage decision agent:', error);
+    logger.error('Error in storage decision agent', {
+      error: error instanceof Error ? error.message : String(error),
+      gameCount: detailedGames.length,
+      qualityThreshold
+    });
     
     // Enhanced fallback with multiple criteria
     const fallbackDecisions = detailedGames.map(game => {
@@ -284,6 +306,7 @@ Return detailed decisions with scores and comprehensive reasoning for each game.
 }
 
 export async function batchStorageDecisions(
+  mastra: Mastra,
   scoutInstructions: string,
   scoutKeywords: string[],
   detailedGames: DetailedGame[],
@@ -291,19 +314,35 @@ export async function batchStorageDecisions(
   batchSize: number = 5
 ): Promise<StorageDecision[]> {
   
+  const logger = mastra.getLogger();
+  
   if (detailedGames.length <= batchSize) {
-    return decideStorage(scoutInstructions, scoutKeywords, detailedGames, qualityThreshold);
+    return decideStorage(mastra, scoutInstructions, scoutKeywords, detailedGames, qualityThreshold);
   }
 
-  console.log(`🔄 Processing ${detailedGames.length} games for storage decisions in batches of ${batchSize}...`);
+  logger.info('Processing games for storage decisions in batches', {
+    totalGames: detailedGames.length,
+    batchSize,
+    totalBatches: Math.ceil(detailedGames.length / batchSize),
+    qualityThreshold
+  });
   
   const allDecisions: StorageDecision[] = [];
   
   for (let i = 0; i < detailedGames.length; i += batchSize) {
     const batch = detailedGames.slice(i, i + batchSize);
-    console.log(`📦 Processing storage batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(detailedGames.length / batchSize)}`);
+    const currentBatch = Math.floor(i / batchSize) + 1;
+    const totalBatches = Math.ceil(detailedGames.length / batchSize);
+    
+    logger.info('Processing storage batch', {
+      batchNumber: currentBatch,
+      totalBatches,
+      batchSize: batch.length,
+      startIndex: i
+    });
     
     const batchDecisions = await decideStorage(
+      mastra,
       scoutInstructions, 
       scoutKeywords, 
       batch, 
@@ -319,7 +358,12 @@ export async function batchStorageDecisions(
   }
   
   const finalStoreCount = allDecisions.filter(d => d.shouldStore).length;
-  console.log(`📊 Final storage decisions: ${finalStoreCount}/${detailedGames.length} games approved for storage`);
+  
+  logger.info('Batch storage decisions completed', {
+    approvedCount: finalStoreCount,
+    totalCount: detailedGames.length,
+    approvalRate: parseFloat((finalStoreCount / detailedGames.length * 100).toFixed(1))
+  });
   
   return allDecisions.sort((a, b) => b.score - a.score);
 }
