@@ -19,10 +19,10 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
-    "@mastra/core": "^0.14.1",
-    "@mastra/libsql": "^0.13.4",
-    "@mastra/loggers": "^0.10.7",
-    "@mastra/memory": "^0.13.1",
+    "@mastra/core": "^0.16.0",
+    "@mastra/libsql": "^0.14.0",
+    "@mastra/loggers": "^0.10.11",
+    "@mastra/memory": "^0.14.4",
     "@mendable/firecrawl-js": "^4.3.3",
     "@neondatabase/serverless": "^1.0.1",
     "agentmail": "^0.0.54",
@@ -30,9 +30,9 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@mastra/mcp-docs-server": "^0.13.16",
+    "@mastra/mcp-docs-server": "^0.13.18",
     "@types/node": "^24.3.0",
-    "mastra": "^0.10.23",
+    "mastra": "^0.12.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.9.2"
   }
