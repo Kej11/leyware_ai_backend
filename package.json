@@ -18,20 +18,21 @@
     "node": ">=20.9.0"
   },
   "dependencies": {
-    "@ai-sdk/google": "^1.2.22",
+    "@ai-sdk/google": "^2.0.13",
     "@mastra/core": "^0.16.0",
     "@mastra/loggers": "^0.10.11",
     "@mastra/memory": "^0.14.4",
     "@mastra/pg": "^0.15.0",
-    "@mendable/firecrawl-js": "^4.3.3",
+    "@mendable/firecrawl-js": "^4.3.4",
     "@neondatabase/serverless": "^1.0.1",
-    "agentmail": "^0.0.54",
-    "dotenv": "^17.2.1",
+    "agentmail": "^0.0.57",
+    "ai": "^5.0.39",
+    "dotenv": "^17.2.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@mastra/mcp-docs-server": "^0.13.18",
-    "@types/node": "^24.3.0",
+    "@types/node": "^24.3.1",
     "mastra": "^0.12.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.9.2"
