@@ -41,10 +41,18 @@ const generateStrategyStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🎯 Generating search strategy for ${scout.platform}...`);
+    logger.info('Generating search strategy', {
+      platform: scout.platform,
+      scoutName: scout.name,
+      scoutId: scout.id,
+      runId: run_id,
+      keywords: scout.keywords,
+      step: 'generate-strategy'
+    });
     
     const strategy = await generateSearchStrategy(
       scout.instructions,
@@ -75,10 +83,18 @@ const executePlatformSearchStep = createStep({
     scout: z.any(),
     run_id: z.string()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { strategy, scout, run_id } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🔍 Executing ${strategy.platform} search...`);
+    logger.info('Executing platform search', {
+      platform: strategy.platform,
+      scoutName: scout.name,
+      scoutId: scout.id,
+      runId: run_id,
+      maxResults: scout.max_results,
+      step: 'execute-platform-search'
+    });
     
     let results = [];
     let totalSearched = 0;
@@ -111,7 +127,14 @@ const executePlatformSearchStep = createStep({
       throw new Error(`Unsupported platform: ${strategy.platform}`);
     }
     
-    console.log(`📊 Found ${totalSearched} results`);
+    logger.info('Platform search completed', {
+      platform: strategy.platform,
+      totalSearched,
+      resultsReturned: Math.min(results.length, scout.max_results * 2),
+      scoutName: scout.name,
+      runId: run_id,
+      step: 'execute-platform-search'
+    });
     
     return {
       raw_results: results.slice(0, scout.max_results * 2),
@@ -138,12 +161,22 @@ const analyzeContentStep = createStep({
     run_id: z.string(),
     total_searched: z.number()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { raw_results, scout, run_id, total_searched } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🤖 Analyzing ${raw_results.length} results with AI...`);
+    logger.info('Starting AI content analysis', {
+      resultsToAnalyze: raw_results.length,
+      scoutName: scout.name,
+      scoutId: scout.id,
+      runId: run_id,
+      totalSearched: total_searched,
+      qualityThreshold: scout.quality_threshold,
+      step: 'analyze-content'
+    });
     
     const analyzed = await batchAnalyzeContent(
+      mastra,
       scout.instructions,
       scout.keywords,
       raw_results,
@@ -152,7 +185,15 @@ const analyzeContentStep = createStep({
     
     const highRelevance = analyzed.filter(r => r.relevance_score >= 0.8).length;
     
-    console.log(`✨ ${analyzed.length} results passed quality threshold (${highRelevance} high relevance)`);
+    logger.info('AI content analysis completed', {
+      analyzedCount: analyzed.length,
+      highRelevanceCount: highRelevance,
+      passedThreshold: analyzed.length,
+      finalResultsCount: Math.min(analyzed.length, scout.max_results),
+      scoutName: scout.name,
+      runId: run_id,
+      step: 'analyze-content'
+    });
     
     return {
       analyzed_results: analyzed.slice(0, scout.max_results),

@@ -25,8 +25,9 @@ export const lookupScoutTool = createTool({
     }),
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { scout_id } = context;
+    const logger = mastra.getLogger();
     
     try {
       const scout = await queryOne<Scout>(
@@ -38,7 +39,12 @@ export const lookupScoutTool = createTool({
         throw new Error(`Scout not found: ${scout_id}`);
       }
       
-      console.log(`✅ Found scout: ${scout.name}`);
+      logger.info('Successfully found scout', { 
+        scoutId: scout_id, 
+        scoutName: scout.name,
+        platform: scout.platform,
+        keywords: scout.keywords?.length || 0
+      });
       
       return {
         scout: {
@@ -57,7 +63,10 @@ export const lookupScoutTool = createTool({
         success: true
       };
     } catch (error) {
-      console.error('❌ Failed to lookup scout:', error);
+      logger.error('Failed to lookup scout', { 
+        scoutId: scout_id,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -76,8 +85,9 @@ export const createScoutRunTool = createTool({
     run_id: z.string(),
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { scout_id, organization_id, max_results, quality_threshold } = context;
+    const logger = mastra.getLogger();
     
     try {
       const result = await queryOne<{ id: string }>(
@@ -97,14 +107,24 @@ export const createScoutRunTool = createTool({
         throw new Error('Failed to create scout run');
       }
       
-      console.log(`✅ Created scout run: ${result.id}`);
+      logger.info('Successfully created scout run', { 
+        runId: result.id, 
+        scoutId: scout_id,
+        organizationId: organization_id,
+        maxResults: max_results,
+        qualityThreshold: quality_threshold
+      });
       
       return {
         run_id: result.id,
         success: true
       };
     } catch (error) {
-      console.error('❌ Failed to create scout run:', error);
+      logger.error('Failed to create scout run', { 
+        scoutId: scout_id,
+        organizationId: organization_id,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -122,8 +142,9 @@ export const updateRunStatusTool = createTool({
   outputSchema: z.object({
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { run_id, status, step_name, step_data } = context;
+    const logger = mastra.getLogger();
     
     try {
       await execute(
@@ -133,11 +154,21 @@ export const updateRunStatusTool = createTool({
         [status, run_id]
       );
       
-      console.log(`📊 Updated run status: ${step_name} -> ${status}`);
+      logger.info('Updated run status', { 
+        runId: run_id, 
+        stepName: step_name,
+        status: status,
+        stepData: step_data
+      });
       
       return { success: true };
     } catch (error) {
-      console.error('Failed to update run status:', error);
+      logger.error('Failed to update run status', { 
+        runId: run_id,
+        stepName: step_name,
+        status: status,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return { success: false };
     }
   }
@@ -167,11 +198,12 @@ export const batchStoreResultsTool = createTool({
     batch_count: z.number(),
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { scout_id, run_id, organization_id, results } = context;
+    const logger = mastra.getLogger();
     
     if (!results || results.length === 0) {
-      console.log('📝 No results to store');
+      logger.info('No results to store', { runId: run_id, scoutId: scout_id });
       return { total_stored: 0, batch_count: 0, success: true };
     }
     
@@ -241,14 +273,29 @@ export const batchStoreResultsTool = createTool({
             );
             totalStored++;
           } catch (error) {
-            console.error('Failed to insert result:', error);
+            logger.error('Failed to insert result', { 
+              runId: run_id,
+              platform: platform,
+              title: result.title,
+              error: error instanceof Error ? error.message : String(error)
+            });
           }
         }
         
-        console.log(`📦 Stored batch ${index + 1}/${batches.length} (${batch.length} items)`);
+        logger.info('Stored batch', { 
+          runId: run_id,
+          batchIndex: index + 1,
+          totalBatches: batches.length,
+          batchSize: batch.length
+        });
       }
       
-      console.log(`🎉 Successfully stored ${totalStored} results in ${batches.length} batches`);
+      logger.info('Successfully completed batch storage', { 
+        runId: run_id,
+        totalStored: totalStored,
+        batchCount: batches.length,
+        scoutId: scout_id
+      });
       
       return {
         total_stored: totalStored,
@@ -256,7 +303,12 @@ export const batchStoreResultsTool = createTool({
         success: true
       };
     } catch (error) {
-      console.error('❌ Failed to store results:', error);
+      logger.error('Failed to store results', { 
+        runId: run_id,
+        scoutId: scout_id,
+        resultsCount: results?.length || 0,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return {
         total_stored: totalStored,
         batch_count: 0,
@@ -281,8 +333,9 @@ export const finalizeScoutRunTool = createTool({
   outputSchema: z.object({
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { run_id, scout_id, results_found, results_processed, high_relevance_count, success, error_message } = context;
+    const logger = mastra.getLogger();
     
     try {
       const status = success ? 'completed' : 'failed';
@@ -297,11 +350,23 @@ export const finalizeScoutRunTool = createTool({
       
       // Note: Simplified finalization - no event tracking table in current schema
       
-      console.log(`✅ Finalized scout run: ${run_id} (${status})`);
+      logger.info('Finalized scout run', { 
+        runId: run_id,
+        scoutId: scout_id,
+        status: status,
+        resultsFound: results_found,
+        resultsProcessed: results_processed,
+        highRelevanceCount: high_relevance_count,
+        errorMessage: error_message
+      });
       
       return { success: true };
     } catch (error) {
-      console.error('❌ Failed to finalize scout run:', error);
+      logger.error('Failed to finalize scout run', { 
+        runId: run_id,
+        scoutId: scout_id,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return { success: false };
     }
   }
@@ -347,11 +412,18 @@ export const storeGameWithCommentsTool = createTool({
     comments_stored: z.number(),
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { scout_id, organization_id, game, decision } = context;
+    const logger = mastra.getLogger();
     
     try {
-      console.log(`💾 Storing game with comments: ${game.title}`);
+      logger.info('Storing game with comments', { 
+        gameTitle: game.title,
+        developer: game.developer,
+        commentsCount: game.comments?.length || 0,
+        decisionScore: decision.score,
+        scoutId: scout_id
+      });
       
       // Calculate engagement score from comments
       const engagementScore = game.comments ? 
@@ -411,7 +483,13 @@ export const storeGameWithCommentsTool = createTool({
       }
 
       const commentsStored = game.comments?.length || 0;
-      console.log(`✅ Stored game: ${game.title} with ${commentsStored} comments in platformData`);
+      logger.info('Successfully stored game with comments', { 
+        gameTitle: game.title,
+        resultId: resultId.id,
+        commentsStored: commentsStored,
+        platformDataSize: JSON.stringify(game).length,
+        scoutId: scout_id
+      });
       
       return {
         result_id: resultId.id,
@@ -420,7 +498,12 @@ export const storeGameWithCommentsTool = createTool({
       };
       
     } catch (error) {
-      console.error('❌ Failed to store game with comments:', error);
+      logger.error('Failed to store game with comments', { 
+        gameTitle: game.title,
+        scoutId: scout_id,
+        commentsCount: game.comments?.length || 0,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return {
         result_id: '',
         comments_stored: 0,
@@ -445,8 +528,9 @@ export const storeScoutDecisionTool = createTool({
   outputSchema: z.object({
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { run_id, stage, item_identifier, decision, reasoning, score, item_data } = context;
+    const logger = mastra.getLogger();
     
     try {
       // Get current runConfig
@@ -480,10 +564,24 @@ export const storeScoutDecisionTool = createTool({
         [JSON.stringify(updatedConfig), run_id]
       );
 
+      logger.info('Stored scout decision', { 
+        runId: run_id,
+        stage: stage,
+        itemIdentifier: item_identifier,
+        decision: decision,
+        score: score
+      });
+      
       return { success: true };
       
     } catch (error) {
-      console.error('❌ Failed to store scout decision:', error);
+      logger.error('Failed to store scout decision', { 
+        runId: run_id,
+        stage: stage,
+        itemIdentifier: item_identifier,
+        decision: decision,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return { success: false };
     }
   }
@@ -507,11 +605,17 @@ export const batchStoreDecisionsTool = createTool({
     decisions_stored: z.number(),
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { run_id, decisions } = context;
+    const logger = mastra.getLogger();
     
     try {
-      console.log(`💾 Storing ${decisions.length} scout decisions...`);
+      logger.info('Storing batch of scout decisions', { 
+        runId: run_id,
+        decisionsCount: decisions.length,
+        stages: [...new Set(decisions.map(d => d.stage))],
+        decisionTypes: [...new Set(decisions.map(d => d.decision))]
+      });
       
       // Get current runConfig
       const currentRun = await queryOne<{ runConfig: any }>(
@@ -544,7 +648,11 @@ export const batchStoreDecisionsTool = createTool({
         [JSON.stringify(updatedConfig), run_id]
       );
       
-      console.log(`✅ Stored ${decisions.length} decisions in runConfig`);
+      logger.info('Successfully stored decisions in runConfig', { 
+        runId: run_id,
+        decisionsStored: decisions.length,
+        totalDecisions: newDecisions.length + existingDecisions.length
+      });
       
       return {
         decisions_stored: decisions.length,
@@ -552,7 +660,11 @@ export const batchStoreDecisionsTool = createTool({
       };
       
     } catch (error) {
-      console.error('❌ Failed to batch store decisions:', error);
+      logger.error('Failed to batch store decisions', { 
+        runId: run_id,
+        decisionsCount: decisions.length,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return {
         decisions_stored: 0,
         success: false
@@ -574,8 +686,9 @@ export const updateRunProgressTool = createTool({
   outputSchema: z.object({
     success: z.boolean()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const { run_id, status, results_found, results_processed, progress_data } = context;
+    const logger = mastra.getLogger();
     
     try {
       // Build dynamic query using existing scout_runs columns
@@ -626,10 +739,22 @@ export const updateRunProgressTool = createTool({
         await execute(query, values);
       }
       
+      logger.info('Updated run progress', { 
+        runId: run_id,
+        status: status,
+        resultsFound: results_found,
+        resultsProcessed: results_processed,
+        progressUpdates: Object.keys(progress_data || {})
+      });
+      
       return { success: true };
       
     } catch (error) {
-      console.error('❌ Failed to update run progress:', error);
+      logger.error('Failed to update run progress', { 
+        runId: run_id,
+        status: status,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return { success: false };
     }
   }

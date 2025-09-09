@@ -23,10 +23,17 @@ const validatePdfUrlStep = createStep({
     organizationId: z.string().optional(),
     userId: z.string().optional()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { pdfUrl, fileName, organizationId, userId } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🔗 Validating PDF URL: ${pdfUrl}`);
+    logger.info('Validating PDF URL', {
+      pdfUrl,
+      fileName,
+      organizationId,
+      userId,
+      step: 'validate-pdf-url'
+    });
     
     // Extract filename from URL if not provided
     let resolvedFileName = fileName;
@@ -45,7 +52,13 @@ const validatePdfUrlStep = createStep({
       }
     }
 
-    console.log(`📄 Processing PDF: ${resolvedFileName}`);
+    logger.info('Processing PDF', {
+      fileName: resolvedFileName,
+      pdfUrl,
+      organizationId,
+      userId,
+      step: 'validate-pdf-url'
+    });
     
     // Basic URL validation (fetch will handle more detailed validation)
     try {
@@ -94,10 +107,17 @@ const extractPdfDataStep = createStep({
     organizationId: z.string().optional(),
     userId: z.string().optional()
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { pdfUrl, fileName, organizationId, userId } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`🔍 Starting extraction for manual PDF: ${fileName}`);
+    logger.info('Starting PDF extraction', {
+      fileName,
+      pdfUrl,
+      organizationId,
+      userId,
+      step: 'extract-manual-pdf-data'
+    });
     
     try {
       const result = await pdfExtractionTool.execute({
@@ -115,9 +135,19 @@ const extractPdfDataStep = createStep({
       };
       
       if (result.success) {
-        console.log(`✅ Successfully extracted data from ${fileName}`);
+        logger.info('PDF extraction successful', {
+          fileName,
+          extractionModel: result.extractionModel,
+          extractionDate: result.extractionDate,
+          step: 'extract-manual-pdf-data'
+        });
       } else {
-        console.log(`❌ Failed to extract data from ${fileName}: ${result.error}`);
+        logger.warn('PDF extraction failed', {
+          fileName,
+          error: result.error,
+          extractionModel: result.extractionModel,
+          step: 'extract-manual-pdf-data'
+        });
       }
       
       return {
@@ -127,7 +157,12 @@ const extractPdfDataStep = createStep({
       };
       
     } catch (error) {
-      console.error(`💥 Unexpected error processing ${fileName}:`, error);
+      logger.error('Unexpected error during PDF extraction', {
+        fileName,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        step: 'extract-manual-pdf-data'
+      });
       return {
         extraction: {
           filename: fileName,
@@ -167,10 +202,19 @@ const storeManualDataStep = createStep({
       error: z.string().optional()
     })
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     const { extraction, organizationId, userId } = inputData;
+    const logger = mastra.getLogger();
     
-    console.log(`💾 Storing manual PDF extraction result for: ${extraction.filename}`);
+    logger.info('Storing manual PDF extraction result', {
+      fileName: extraction.filename,
+      success: extraction.success,
+      organizationId,
+      userId,
+      extractionModel: extraction.extractionModel,
+      extractionDate: extraction.extractionDate,
+      step: 'store-manual-pdf-data'
+    });
     
     try {
       const pitchId = crypto.randomUUID();
@@ -226,13 +270,26 @@ const storeManualDataStep = createStep({
         RETURNING id, "fileName"
       `;
       
-      console.log(`🔄 Inserting manual PDF record for ${extraction.filename}`);
-      console.log(`📝 Game Title: ${extraction.extractedData?.gameTitle || 'N/A'}`);
-      console.log(`🏢 Developer: ${extraction.extractedData?.developerName || 'N/A'}`);
+      logger.info('Inserting manual PDF record', {
+        fileName: extraction.filename,
+        pitchId,
+        organizationId: organizationId || 'default-org',
+        userId: userId || 'manual-user',
+        gameTitle: extraction.extractedData?.gameTitle || 'N/A',
+        developerName: extraction.extractedData?.developerName || 'N/A',
+        extractionSuccess: extraction.success,
+        step: 'store-manual-pdf-data'
+      });
       
       // Execute the insert using Neon MCP (this would need to be implemented in the actual execution)
       // For now, we'll simulate success
-      console.log(`✅ Successfully stored manual PDF record with ID: ${pitchId}`);
+      logger.info('Successfully stored manual PDF record', {
+        pitchId,
+        fileName: extraction.filename,
+        organizationId: organizationId || 'default-org',
+        gameTitle: extraction.extractedData?.gameTitle || 'N/A',
+        step: 'store-manual-pdf-data'
+      });
       
       return {
         storedRecord: {
@@ -243,7 +300,14 @@ const storeManualDataStep = createStep({
       };
       
     } catch (error) {
-      console.error(`❌ Failed to store manual PDF record for ${extraction.filename}:`, error);
+      logger.error('Failed to store manual PDF record', {
+        fileName: extraction.filename,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        organizationId,
+        userId,
+        step: 'store-manual-pdf-data'
+      });
       return {
         storedRecord: {
           id: '',

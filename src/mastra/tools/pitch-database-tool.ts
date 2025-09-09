@@ -44,9 +44,17 @@ export const insertPitchTool = createTool({
       extractionConfidence: z.string().optional()
     })
   }),
-  execute: async ({ pitchData }) => {
+  execute: async ({ pitchData, mastra }) => {
+    const logger = mastra.getLogger();
     try {
-      console.log(`💾 Inserting pitch record: ${pitchData.fileName}`);
+      logger.info('Inserting pitch record', { 
+        fileName: pitchData.fileName,
+        pitchId: pitchData.id,
+        organizationId: pitchData.organizationId,
+        extractionStatus: pitchData.extractionStatus,
+        gameTitle: pitchData.gameTitle,
+        developerName: pitchData.developerName
+      });
       
       // Build the INSERT query dynamically based on provided fields
       const definedFields = Object.entries(pitchData).filter(([_, value]) => value !== undefined);
@@ -60,7 +68,11 @@ export const insertPitchTool = createTool({
         RETURNING id, "fileName", "gameTitle", "developerName"
       `;
       
-      console.log(`📝 Executing database insert for ${pitchData.fileName}`);
+      logger.info('Executing database insert', { 
+        fileName: pitchData.fileName,
+        fieldsCount: definedFields.length,
+        columns: columns
+      });
       
       // Note: This is a placeholder - in actual execution, we would need to use 
       // the Neon MCP tools through the workflow context or external call
@@ -76,7 +88,11 @@ export const insertPitchTool = createTool({
       };
       
     } catch (error) {
-      console.error(`❌ Failed to insert pitch record:`, error);
+      logger.error('Failed to insert pitch record', { 
+        fileName: pitchData.fileName,
+        pitchId: pitchData.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
       
       return {
         success: false,
@@ -95,9 +111,14 @@ export const updatePitchTool = createTool({
     pitchId: z.string(),
     updates: z.record(z.any())
   }),
-  execute: async ({ pitchId, updates }) => {
+  execute: async ({ pitchId, updates, mastra }) => {
+    const logger = mastra.getLogger();
     try {
-      console.log(`📝 Updating pitch record: ${pitchId}`);
+      logger.info('Updating pitch record', { 
+        pitchId: pitchId,
+        updatesCount: Object.keys(updates).length,
+        updateFields: Object.keys(updates)
+      });
       
       const updateFields = Object.entries(updates)
         .filter(([_, value]) => value !== undefined)
@@ -121,7 +142,11 @@ export const updatePitchTool = createTool({
       };
       
     } catch (error) {
-      console.error(`❌ Failed to update pitch record:`, error);
+      logger.error('Failed to update pitch record', { 
+        pitchId: pitchId,
+        updatesCount: Object.keys(updates).length,
+        error: error instanceof Error ? error.message : String(error)
+      });
       
       return {
         success: false,

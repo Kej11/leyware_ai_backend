@@ -16,6 +16,20 @@ import {
 
 export class SteamSearchTool extends BasePlatformSearchTool {
   platform = 'steam';
+  
+  // Helper method for structured logging - logs to both console and potential structured logger
+  private log(level: 'info' | 'warn' | 'error', message: string, metadata?: any) {
+    const logData = { platform: this.platform, ...metadata };
+    
+    // Structured logging format for console
+    if (level === 'info') {
+      console.log(`[Steam Search] ${message}`, logData);
+    } else if (level === 'warn') {
+      console.warn(`[Steam Search] ${message}`, logData);
+    } else {
+      console.error(`[Steam Search] ${message}`, logData);
+    }
+  }
 
   async search(strategy: SearchStrategy): Promise<PlatformSearchResult[]> {
     const { search_params } = strategy;
@@ -23,17 +37,22 @@ export class SteamSearchTool extends BasePlatformSearchTool {
     
     const results: PlatformSearchResult[] = [];
     
-    console.log(`🎮 Starting Steam demo search across ${pages.length} pages...`);
+    this.log('info', 'Starting Steam demo search', { 
+      pagesCount: pages.length,
+      keywords: keywords,
+      maxResults: maxResults,
+      qualityThreshold: qualityThreshold
+    });
     
     for (const page of pages) {
       try {
         const url = STEAM_DEMO_URLS[page as keyof typeof STEAM_DEMO_URLS];
         if (!url) {
-          console.warn(`⚠️ Unknown Steam demo page: ${page}`);
+          this.log('warn', 'Unknown Steam demo page', { page: page });
           continue;
         }
 
-        console.log(`🔍 Scraping Steam demo page: ${page} (${url})`);
+        this.log('info', 'Scraping Steam demo page', { page: page, url: url });
         
         const scrapeResult = await rateLimitedFirecrawl.scrapeWithDelay(url, {
           formats: [{
@@ -74,7 +93,10 @@ export class SteamSearchTool extends BasePlatformSearchTool {
         
         if (scrapeResult?.json?.demos) {
           const demos = scrapeResult.json.demos;
-          console.log(`📦 Found ${demos.length} demos on ${page} page`);
+          this.log('info', 'Found demos on page', { 
+            page: page,
+            demosCount: demos.length
+          });
           
           for (const demo of demos) {
             // Apply keyword filtering
@@ -117,24 +139,27 @@ export class SteamSearchTool extends BasePlatformSearchTool {
             
             // Stop if we've reached maxResults
             if (results.length >= maxResults) {
-              console.log(`✅ Reached maximum results limit: ${maxResults}`);
+              this.log('info', 'Reached maximum results limit', { maxResults: maxResults });
               break;
             }
           }
         } else {
-          console.warn(`⚠️ No demos found on ${page} page`);
+          this.log('warn', 'No demos found on page', { page: page });
         }
         
         // Stop if we've reached maxResults
         if (results.length >= maxResults) break;
         
       } catch (error) {
-        console.error(`❌ Error scraping Steam demo page ${page}:`, error);
+        this.log('error', 'Error scraping Steam demo page', { 
+          page: page,
+          error: error instanceof Error ? error.message : String(error)
+        });
         continue;
       }
     }
     
-    console.log(`🎉 Steam demo search completed: ${results.length} total results`);
+    this.log('info', 'Steam demo search completed', { totalResults: results.length });
     return results;
   }
 
@@ -217,7 +242,10 @@ export class SteamSearchTool extends BasePlatformSearchTool {
     const { search_params } = strategy;
     const { pages, maxResults } = search_params;
     
-    console.log('🎮 Step 1: Scraping Steam game listings...');
+    this.log('info', 'Step 1: Scraping Steam game listings', { 
+      pagesCount: pages.length,
+      maxResults: maxResults
+    });
     
     // Use the demos page with offset parameter
     const url = `https://store.steampowered.com/demos/?flavor=recentlyreleased&offset=48`;
@@ -242,7 +270,7 @@ export class SteamSearchTool extends BasePlatformSearchTool {
         required: ["games"]
       };
 
-      console.log(`🔍 Scraping listings from: ${url}`);
+      this.log('info', 'Scraping listings from URL', { url: url });
       
       const result = await rateLimitedFirecrawl.scrapeWithDelay(url, {
         formats: ['json'],
@@ -251,27 +279,33 @@ export class SteamSearchTool extends BasePlatformSearchTool {
 
       if (result?.json?.games) {
         const listings = result.json.games.slice(0, maxResults);
-        console.log(`✅ Found ${listings.length} game listings`);
+        this.log('info', 'Found game listings', { count: listings.length });
         return listings;
       } else {
-        console.warn('⚠️ No games found in listings scrape');
+        this.log('warn', 'No games found in listings scrape');
         return [];
       }
     } catch (error) {
-      console.error('❌ Error scraping Steam listings:', error);
+      this.log('error', 'Error scraping Steam listings', { 
+        error: error instanceof Error ? error.message : String(error)
+      });
       return [];
     }
   }
 
   async scrapeDetailedGames(gameUrls: string[]): Promise<SteamDetailedGame[]> {
-    console.log(`🎮 Step 2: Scraping detailed info for ${gameUrls.length} games...`);
+    this.log('info', 'Step 2: Scraping detailed info for games', { gamesCount: gameUrls.length });
     
     const detailedGames: SteamDetailedGame[] = [];
     const DELAY_BETWEEN_REQUESTS = 6000; // 6 seconds between requests
     
     for (let i = 0; i < gameUrls.length; i++) {
       const url = gameUrls[i];
-      console.log(`🔍 Scraping game ${i + 1}/${gameUrls.length}: ${url}`);
+      this.log('info', 'Scraping game details', { 
+        index: i + 1,
+        total: gameUrls.length,
+        url: url
+      });
       
       try {
         const detailedSchema = {
@@ -338,23 +372,30 @@ export class SteamSearchTool extends BasePlatformSearchTool {
           };
           
           detailedGames.push(gameData);
-          console.log(`✅ Successfully scraped: ${gameData.name}`);
+          this.log('info', 'Successfully scraped game', { gameName: gameData.name });
         } else {
-          console.warn(`⚠️ No detailed data found for: ${url}`);
+          this.log('warn', 'No detailed data found for game', { url: url });
         }
 
       } catch (error) {
-        console.error(`❌ Error scraping detailed game ${url}:`, error);
+        this.log('error', 'Error scraping detailed game', { 
+          url: url,
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
       
       // Rate limiting delay
       if (i < gameUrls.length - 1) {
-        console.log(`⏳ Waiting ${DELAY_BETWEEN_REQUESTS/1000}s before next request...`);
+        this.log('info', 'Rate limiting delay', { delaySeconds: DELAY_BETWEEN_REQUESTS/1000 });
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
       }
     }
     
-    console.log(`✅ Detailed scraping complete: ${detailedGames.length}/${gameUrls.length} successful`);
+    this.log('info', 'Detailed scraping complete', { 
+      successful: detailedGames.length,
+      total: gameUrls.length,
+      successRate: `${((detailedGames.length / gameUrls.length) * 100).toFixed(1)}%`
+    });
     return detailedGames;
   }
 }

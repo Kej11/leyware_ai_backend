@@ -12,6 +12,20 @@ import {
 
 export class ItchioSearchTool extends BasePlatformSearchTool {
   platform = 'itchio';
+  
+  // Helper method for structured logging - logs to both console and potential structured logger
+  private log(level: 'info' | 'warn' | 'error', message: string, metadata?: any) {
+    const logData = { platform: this.platform, ...metadata };
+    
+    // Structured logging format for console
+    if (level === 'info') {
+      console.log(`[Itch.io Search] ${message}`, logData);
+    } else if (level === 'warn') {
+      console.warn(`[Itch.io Search] ${message}`, logData);
+    } else {
+      console.error(`[Itch.io Search] ${message}`, logData);
+    }
+  }
 
   async search(strategy: SearchStrategy): Promise<PlatformSearchResult[]> {
     const { search_params } = strategy;
@@ -19,7 +33,12 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
     
     const results: PlatformSearchResult[] = [];
     
-    console.log(`🎮 Starting itch.io search across ${pages.length} pages...`);
+    this.log('info', 'Starting itch.io search', { 
+      pagesCount: pages.length,
+      keywords: keywords,
+      maxResults: maxResults,
+      qualityThreshold: qualityThreshold
+    });
     
     // Base URLs for different itch.io pages
     const baseUrls = {
@@ -32,11 +51,11 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
       try {
         const url = baseUrls[page as keyof typeof baseUrls];
         if (!url) {
-          console.warn(`⚠️ Unknown itch.io page: ${page}`);
+          this.log('warn', 'Unknown itch.io page', { page: page });
           continue;
         }
 
-        console.log(`🎮 Scraping itch.io page: ${page} (${url})`);
+        this.log('info', 'Scraping itch.io page', { page: page, url: url });
         
         // Use simple scrape with flexible schema - much faster and more reliable
         const scrapeResult = await rateLimitedFirecrawl.scrapeWithDelay(url, {
@@ -67,7 +86,10 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
         // Simple scrape returns json directly
         if (scrapeResult?.json?.games) {
           const games = scrapeResult.json.games;
-          console.log(`📦 Found ${games.length} games on ${page} page`);
+          this.log('info', 'Found games on page', { 
+            page: page,
+            gamesCount: games.length
+          });
           
           for (const game of games) {
             // Apply keyword filtering
@@ -104,24 +126,27 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
             
             // Stop if we've reached maxResults
             if (results.length >= maxResults) {
-              console.log(`✅ Reached maximum results limit: ${maxResults}`);
+              this.log('info', 'Reached maximum results limit', { maxResults: maxResults });
               break;
             }
           }
         } else {
-          console.warn(`⚠️ No games found on ${page} page or crawl failed`);
+          this.log('warn', 'No games found on page or crawl failed', { page: page });
         }
         
         // Stop if we've reached maxResults
         if (results.length >= maxResults) break;
         
       } catch (error) {
-        console.error(`❌ Error scraping itch.io page ${page}:`, error);
+        this.log('error', 'Error scraping itch.io page', { 
+          page: page,
+          error: error instanceof Error ? error.message : String(error)
+        });
         continue;
       }
     }
     
-    console.log(`🎉 Itch.io search completed: ${results.length} total results`);
+    this.log('info', 'Itch.io search completed', { totalResults: results.length });
     return results;
   }
 
@@ -182,7 +207,11 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
     
     const listings: GameListing[] = [];
     
-    console.log(`🎮 Starting intelligent itch.io listing scrape across ${pages.length} pages...`);
+    this.log('info', 'Starting intelligent itch.io listing scrape', { 
+      pagesCount: pages.length,
+      keywords: keywords,
+      maxResults: maxResults
+    });
     
     // Base URLs for different itch.io pages
     const baseUrls = {
@@ -197,11 +226,11 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
       try {
         const url = baseUrls[page as keyof typeof baseUrls];
         if (!url) {
-          console.warn(`⚠️ Unknown itch.io page: ${page}`);
+          this.log('warn', 'Unknown itch.io page', { page: page });
           continue;
         }
 
-        console.log(`🎮 Scraping itch.io listings from: ${page} (${url})`);
+        this.log('info', 'Scraping itch.io listings from page', { page: page, url: url });
         
         const listingSchema = {
           type: "object",
@@ -237,7 +266,10 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
         
         if (scrapeResult?.json?.games) {
           const games = scrapeResult.json.games;
-          console.log(`📦 Found ${games.length} game listings on ${page} page`);
+          this.log('info', 'Found game listings on page', { 
+            page: page,
+            listingsCount: games.length
+          });
           
           for (const game of games) {
             // Apply keyword filtering
@@ -263,24 +295,27 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
             
             // Stop if we've reached maxResults
             if (listings.length >= maxResults) {
-              console.log(`✅ Reached maximum listings limit: ${maxResults}`);
+              this.log('info', 'Reached maximum listings limit', { maxResults: maxResults });
               break;
             }
           }
         } else {
-          console.warn(`⚠️ No game listings found on ${page} page or scrape failed`);
+          this.log('warn', 'No game listings found on page or scrape failed', { page: page });
         }
         
         // Stop if we've reached maxResults
         if (listings.length >= maxResults) break;
         
       } catch (error) {
-        console.error(`❌ Error scraping itch.io listings from ${page}:`, error);
+        this.log('error', 'Error scraping itch.io listings from page', { 
+          page: page,
+          error: error instanceof Error ? error.message : String(error)
+        });
         continue;
       }
     }
     
-    console.log(`🎉 Listing scrape completed: ${listings.length} total game listings`);
+    this.log('info', 'Listing scrape completed', { totalListings: listings.length });
     return listings;
   }
 
@@ -290,7 +325,7 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
   async scrapeDetailedGames(gameUrls: string[]): Promise<DetailedGame[]> {
     const detailedGames: DetailedGame[] = [];
     
-    console.log(`🔍 Starting detailed scraping for ${gameUrls.length} selected games...`);
+    this.log('info', 'Starting detailed scraping for selected games', { gamesCount: gameUrls.length });
     
     const gameDetailSchema = {
       type: "object",
@@ -343,11 +378,15 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
       const gameUrl = gameUrls[i];
       
       try {
-        console.log(`🎮 Processing ${i + 1}/${gameUrls.length}: ${gameUrl}`);
+        this.log('info', 'Processing game for detailed scraping', { 
+          index: i + 1,
+          total: gameUrls.length,
+          gameUrl: gameUrl
+        });
 
         // Rate limiting - wait 6 seconds between requests
         if (i > 0) {
-          console.log('⏳ Rate limiting: waiting 6 seconds...');
+          this.log('info', 'Rate limiting: waiting 6 seconds');
           await new Promise(resolve => setTimeout(resolve, 6000));
         }
 
@@ -383,19 +422,29 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
           };
 
           detailedGames.push(detailedGame);
-          console.log(`✅ Successfully scraped: ${gameData.title} (${gameData.comments?.length || 0} comments)`);
+          this.log('info', 'Successfully scraped detailed game', { 
+            gameTitle: gameData.title,
+            commentsCount: gameData.comments?.length || 0
+          });
           
         } else {
-          console.warn(`⚠️ Failed to get detailed data for: ${gameUrl}`);
+          this.log('warn', 'Failed to get detailed data for game', { gameUrl: gameUrl });
         }
 
       } catch (error) {
-        console.error(`❌ Error scraping detailed game ${gameUrl}:`, error.message);
+        this.log('error', 'Error scraping detailed game', { 
+          gameUrl: gameUrl,
+          error: error instanceof Error ? error.message : String(error)
+        });
         continue;
       }
     }
 
-    console.log(`🎉 Detailed scraping completed: ${detailedGames.length}/${gameUrls.length} games successfully scraped`);
+    this.log('info', 'Detailed scraping completed', { 
+      successful: detailedGames.length,
+      total: gameUrls.length,
+      successRate: `${((detailedGames.length / gameUrls.length) * 100).toFixed(1)}%`
+    });
     return detailedGames;
   }
 }

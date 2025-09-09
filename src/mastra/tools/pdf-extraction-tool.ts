@@ -43,10 +43,13 @@ export const pdfExtractionTool = createTool({
     pdfUrl: z.string().url().describe('URL to download the PDF attachment'),
     fileName: z.string().describe('Name of the PDF file')
   }),
-  execute: async ({ pdfUrl, fileName }) => {
+  execute: async ({ pdfUrl, fileName, mastra }) => {
+    const logger = mastra.getLogger();
     try {
-      console.log(`📄 Starting PDF extraction for: ${fileName}`);
-      console.log(`🔗 PDF URL: ${pdfUrl}`);
+      logger.info('Starting PDF extraction', { 
+        fileName: fileName,
+        pdfUrl: pdfUrl
+      });
 
       // Download PDF from URL
       const pdfResponse = await fetch(pdfUrl);
@@ -57,7 +60,11 @@ export const pdfExtractionTool = createTool({
       const pdfBuffer = await pdfResponse.arrayBuffer();
       const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
       
-      console.log(`📊 PDF downloaded successfully, size: ${pdfBuffer.byteLength} bytes`);
+      logger.info('PDF downloaded successfully', { 
+        fileName: fileName,
+        sizeBytes: pdfBuffer.byteLength,
+        sizeMB: (pdfBuffer.byteLength / 1024 / 1024).toFixed(2)
+      });
 
       // Use Google Gemini to extract structured data from PDF
       const result = await generateObject({
@@ -105,10 +112,15 @@ export const pdfExtractionTool = createTool({
         temperature: 0.1, // Low temperature for consistent extraction
       });
 
-      console.log(`✅ PDF extraction completed successfully`);
-      console.log(`🎯 Game Title: ${result.object.gameTitle || 'Not found'}`);
-      console.log(`🏢 Developer: ${result.object.developerName || 'Not found'}`);
-      console.log(`📊 Overall Confidence: ${(result.object.confidence.overall * 100).toFixed(1)}%`);
+      logger.info('PDF extraction completed successfully', { 
+        fileName: fileName,
+        gameTitle: result.object.gameTitle || 'Not found',
+        developerName: result.object.developerName || 'Not found',
+        overallConfidence: (result.object.confidence.overall * 100).toFixed(1),
+        extractedGenres: result.object.genre?.length || 0,
+        extractedPlatforms: result.object.platforms?.length || 0,
+        extractedUSPs: result.object.uniqueSellingPoints?.length || 0
+      });
 
       return {
         success: true,
@@ -119,7 +131,11 @@ export const pdfExtractionTool = createTool({
       };
 
     } catch (error) {
-      console.error(`❌ PDF extraction failed for ${fileName}:`, error);
+      logger.error('PDF extraction failed', { 
+        fileName: fileName,
+        pdfUrl: pdfUrl,
+        error: error instanceof Error ? error.message : String(error)
+      });
       
       return {
         success: false,
