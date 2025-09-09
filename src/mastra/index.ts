@@ -28,7 +28,8 @@ export const mastra = new Mastra({
     storageDecisionAgent
   },
   storage: new PostgresStore({
-    url: process.env.NEON_DATABASE_URL!,
+    connectionString: process.env.NEON_DATABASE_URL!,
+    schemaName: "mastra"
   }),
   logger: new PinoLogger({
     name: 'Mastra',
