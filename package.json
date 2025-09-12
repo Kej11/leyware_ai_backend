@@ -25,7 +25,6 @@
     "@mastra/pg": "^0.15.0",
     "@mendable/firecrawl-js": "^4.3.4",
     "@neondatabase/serverless": "^1.0.1",
-    "agentmail": "^0.0.57",
     "ai": "^5.0.39",
     "dotenv": "^17.2.2",
     "zod": "^3.25.76"
