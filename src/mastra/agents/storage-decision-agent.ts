@@ -34,21 +34,21 @@ export const storageDecisionAgent = new Agent({
     - Reasonable file sizes
     - Professional presentation
 
-    SCORING GUIDELINES:
-    - 0.9-1.0: Exceptional find - perfect mission match with strong community
-    - 0.8-0.9: Excellent - very good match with good engagement
-    - 0.7-0.8: Good - solid match worth storing
-    - 0.6-0.7: Decent - meets criteria but not exceptional
-    - 0.5-0.6: Marginal - barely meets storage threshold
-    - 0.0-0.5: Below threshold - should not store
+    SCORING GUIDELINES (adjusted for indie game discovery):
+    - 0.8-1.0: Exceptional find - perfect indie game or publishing opportunity
+    - 0.6-0.7: Excellent - strong indie game content worth storing
+    - 0.4-0.5: Good - relevant indie gaming content, store for potential
+    - 0.3-0.4: Decent - gaming-related, may have some value
+    - 0.2-0.3: Marginal - tangentially relevant
+    - 0.0-0.2: Below threshold - not relevant to indie gaming
 
-    STORAGE PHILOSOPHY:
-    - Quality over quantity - be selective
-    - Prioritize games with active communities
-    - Value developer engagement and responsiveness
-    - Look for unique or innovative games
-    - Consider long-term value and relevance
-    - Store games that provide actionable insights
+    STORAGE PHILOSOPHY (for indie game discovery):
+    - Inclusivity over exclusivity - capture potential opportunities
+    - Prioritize indie developers and solo creators
+    - Value games seeking publishing or investment opportunities
+    - Look for innovative or unique concepts, even if early-stage
+    - Consider potential for growth and development
+    - Store games that could benefit from publishing support
 
     Always provide detailed reasoning including specific evidence from the game data.`,
   model: google('gemini-2.5-pro')
@@ -88,7 +88,7 @@ export async function decideStorage(
   scoutInstructions: string,
   scoutKeywords: string[],
   detailedGames: DetailedGame[],
-  qualityThreshold: number = 0.7
+  qualityThreshold: number = 0.4
 ): Promise<StorageDecision[]> {
   
   const logger = mastra.getLogger();
@@ -162,14 +162,24 @@ Return detailed decisions with scores and comprehensive reasoning for each game.
   });
 
   try {
-    const response = await storageDecisionAgent.generate(prompt, {
-      experimental_output: decisionsSchema
+    const response = await storageDecisionAgent.generateVNext(prompt, {
+      structuredOutput: {
+        schema: decisionsSchema
+      }
     });
 
-    if (!response.object?.decisions) {
+    logger.info('Storage agent response received', {
+      responseType: typeof response,
+      responseKeys: response ? Object.keys(response) : [],
+      hasDecisions: !!response?.decisions,
+      responsePreview: JSON.stringify(response, null, 2).substring(0, 500)
+    });
+
+    if (!response?.decisions) {
       logger.warn('Storage agent returned no decisions, using fallback logic', {
         gameCount: detailedGames.length,
-        qualityThreshold
+        qualityThreshold,
+        response: response
       });
       
       // Fallback: store games with good engagement or high ratings
@@ -198,7 +208,7 @@ Return detailed decisions with scores and comprehensive reasoning for each game.
       });
     }
 
-    const decisions = response.object.decisions;
+    const decisions = response.decisions;
     
     // Apply quality threshold
     decisions.forEach(decision => {
@@ -310,7 +320,7 @@ export async function batchStorageDecisions(
   scoutInstructions: string,
   scoutKeywords: string[],
   detailedGames: DetailedGame[],
-  qualityThreshold: number = 0.7,
+  qualityThreshold: number = 0.4,
   batchSize: number = 5
 ): Promise<StorageDecision[]> {
   

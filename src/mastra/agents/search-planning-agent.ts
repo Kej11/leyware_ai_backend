@@ -4,36 +4,17 @@ import { z } from 'zod';
 
 export const searchPlanningAgent = new Agent({
   name: 'SearchPlanningAgent',
-  description: 'Generates optimal search strategies for gaming content discovery across multiple platforms',
-  instructions: `You are an expert at planning searches for gaming content across Reddit, itch.io, and Steam.
+  description: 'Generates concise search strategies for discovering indie games seeking publishing investment',
+  instructions: `Generate concise search parameters for indie game discovery.
+
+    PLATFORMS: 
+    - Reddit: Use subreddits IndieGaming, IndieGames, IndieDev, gamedev
+    - Itch.io: Search for indie games needing publishing support (use platform name "itchio")
+    - Steam: Target indie releases and early access games
     
-    Given scout instructions and keywords, generate an optimal search strategy for the specified platform.
+    KEYWORDS: Expand to include "indie", "solo dev", "small team", "seeking publisher", "funding"
     
-    For Reddit:
-    - Identify the most relevant subreddits for the topic
-    - Expand keywords intelligently based on gaming terminology
-    - Choose appropriate time filters based on the scout's frequency
-    - Recommend sort options (top for quality, new for freshness)
-    
-    For Itch.io:
-    - Select which pages to search: 'games', 'new-and-popular', 'newest'
-    - Expand keywords to match indie game terminology and genres
-    - Consider price filters (free, paid, name-your-own-price)
-    - Focus on discovering creative and experimental games
-    
-    For Steam:
-    - Select demo pages: 'demos', 'recentlyreleased', 'newandtrending'
-    - Expand keywords to match Steam tags and genres
-    - Consider review scores and platform preferences
-    - Focus on finding high-quality game demos
-    
-    Be specific and thoughtful in your strategy. Consider:
-    - Platform-specific discovery patterns
-    - Gaming genre and community preferences
-    - Search volume vs. quality trade-offs
-    - Platform-specific terminology and tags
-    
-    Output a structured strategy with your reasoning.`,
+    Keep reasoning brief (1-2 sentences). Focus on structured output only.`,
   model: google('gemini-2.5-pro')
 });
 
@@ -51,19 +32,20 @@ export async function generateSearchStrategy(
 
   let platformSpecificInstructions = '';
   if (platform === 'reddit') {
-    platformSpecificInstructions = `Identify 3-5 highly relevant subreddits and expand keywords. Use time filter: ${timeframeMap[frequency] || 'week'}`;
-  } else if (platform === 'itchio') {
-    platformSpecificInstructions = 'Select appropriate itch.io pages (games, new-and-popular, newest) and expand keywords for indie game discovery.';
+    platformSpecificInstructions = `Use subreddits: IndieGaming, IndieGames, IndieDev, gamedev. Time filter: ${timeframeMap[frequency] || 'week'}. Sort: hot.`;
+  } else if (platform === 'itchio' || platform === 'itch.io') {
+    platformSpecificInstructions = 'Platform name must be "itchio". Select pages: games, new-and-popular, newest. Target indie developers.';
   } else if (platform === 'steam') {
-    platformSpecificInstructions = 'Select appropriate Steam demo pages (demos, recentlyreleased, newandtrending) and expand keywords for Steam tags/genres.';
+    platformSpecificInstructions = 'Select pages: demos, recentlyreleased, newandtrending. Focus on indie releases.';
   }
 
-  const prompt = `SCOUT INSTRUCTIONS: ${instructions}
-INITIAL KEYWORDS: ${keywords.join(', ')}
-PLATFORM: ${platform}
-SCOUT FREQUENCY: ${frequency}
+  const prompt = `Generate search strategy for ${platform}.
+Keywords: ${keywords.join(', ')}
+Frequency: ${frequency}
 
-Generate an optimal ${platform} search strategy. ${platformSpecificInstructions}`;
+${platformSpecificInstructions}
+
+REQUIRED: Set platform field to "${platform === 'itch.io' ? 'itchio' : platform}". Keep reasoning under 2 sentences.`;
 
   let searchParamsSchema;
   
@@ -75,13 +57,13 @@ Generate an optimal ${platform} search strategy. ${platformSpecificInstructions}
       sort: z.string(),
       limit: z.number()
     });
-  } else if (platform === 'itchio') {
+  } else if (platform === 'itchio' || platform === 'itch.io') {
     searchParamsSchema = z.object({
       pages: z.array(z.string()),
       keywords: z.array(z.string()),
       detailed: z.boolean().default(false),
       maxResults: z.number().default(25),
-      qualityThreshold: z.number().default(0.7)
+      qualityThreshold: z.number().default(0.4)
     });
   } else if (platform === 'steam') {
     searchParamsSchema = z.object({
@@ -89,7 +71,7 @@ Generate an optimal ${platform} search strategy. ${platformSpecificInstructions}
       keywords: z.array(z.string()),
       detailed: z.boolean().default(false),
       maxResults: z.number().default(25),
-      qualityThreshold: z.number().default(0.7)
+      qualityThreshold: z.number().default(0.4)
     });
   } else {
     // Default schema
@@ -99,18 +81,54 @@ Generate an optimal ${platform} search strategy. ${platformSpecificInstructions}
     });
   }
 
-  const response = await searchPlanningAgent.generate(prompt, {
-    experimental_output: z.object({
-      platform: z.string(),
-      search_params: searchParamsSchema,
-      expanded_keywords: z.array(z.string()),
-      reasoning: z.string()
-    })
+  const response = await searchPlanningAgent.generateVNext(prompt, {
+    structuredOutput: {
+      schema: z.object({
+        platform: z.string(),
+        search_params: searchParamsSchema,
+        expanded_keywords: z.array(z.string()),
+        reasoning: z.string()
+      })
+    }
   });
 
-  if (!response.object) {
-    throw new Error('Failed to generate search strategy');
+  if (!response) {
+    throw new Error('Failed to generate search strategy - no response from AI');
   }
 
-  return response.object;
+  // Validate and fix required fields
+  if (!response.platform) {
+    response.platform = platform === 'itch.io' ? 'itchio' : platform;
+  }
+  
+  if (!response.search_params) {
+    if (platform === 'reddit') {
+      response.search_params = { 
+        subreddits: ['IndieGaming', 'IndieGames', 'IndieDev', 'gamedev'], 
+        keywords: [...keywords, 'indie', 'solo dev', 'small team'], 
+        time_filter: 'week', 
+        sort: 'hot', 
+        limit: 25 
+      };
+    } else if (platform === 'itchio' || platform === 'itch.io') {
+      response.search_params = {
+        pages: ['games', 'new-and-popular', 'newest'],
+        keywords: [...keywords, 'indie', 'solo dev'],
+        detailed: false,
+        maxResults: 25,
+        qualityThreshold: 0.4
+      };
+    } else {
+      response.search_params = { keywords: keywords, limit: 25 };
+    }
+  }
+  
+  if (!response.expanded_keywords || response.expanded_keywords.length === 0) {
+    response.expanded_keywords = keywords;
+  }
+
+  // Add scout instructions to strategy for use by intelligent search
+  (response as any).instructions = instructions;
+
+  return response;
 }

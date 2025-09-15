@@ -54,12 +54,33 @@ const generateStrategyStep = createStep({
       step: 'generate-strategy'
     });
     
+    // Normalize platform name before calling generateSearchStrategy
+    const normalizedPlatform = scout.platform === 'itch.io' ? 'itchio' : scout.platform;
+    
     const strategy = await generateSearchStrategy(
       scout.instructions,
       scout.keywords,
-      scout.platform,
+      normalizedPlatform,
       scout.frequency
     );
+    
+    logger.info('Strategy generated', {
+      strategyPlatform: strategy.platform,
+      scoutPlatform: scout.platform,
+      hasSearchParams: !!strategy.search_params,
+      keywordsCount: strategy.expanded_keywords?.length || 0,
+      runId: run_id,
+      step: 'generate-strategy'
+    });
+    
+    // Ensure platform is set in strategy (fallback to scout platform)
+    if (!strategy.platform) {
+      logger.warn('Strategy missing platform, using scout platform', {
+        scoutPlatform: scout.platform,
+        runId: run_id
+      });
+      strategy.platform = scout.platform;
+    }
     
     return {
       strategy,
@@ -107,7 +128,7 @@ const executePlatformSearchStep = createStep({
       
       results = searchResult.results;
       totalSearched = searchResult.total_searched;
-    } else if (strategy.platform === 'itchio') {
+    } else if (strategy.platform === 'itchio' || strategy.platform === 'itch.io') {
       const searchResult = await itchioSearchTool.execute({
         context: { strategy },
         runtimeContext: {} as any
@@ -165,13 +186,17 @@ const analyzeContentStep = createStep({
     const { raw_results, scout, run_id, total_searched } = inputData;
     const logger = mastra.getLogger();
     
+    // Override quality threshold to 0.4 for inclusivity
+    const effectiveThreshold = Math.min(scout.quality_threshold, 0.4);
+    
     logger.info('Starting AI content analysis', {
       resultsToAnalyze: raw_results.length,
       scoutName: scout.name,
       scoutId: scout.id,
       runId: run_id,
       totalSearched: total_searched,
-      qualityThreshold: scout.quality_threshold,
+      originalThreshold: scout.quality_threshold,
+      effectiveThreshold: effectiveThreshold,
       step: 'analyze-content'
     });
     
@@ -180,7 +205,7 @@ const analyzeContentStep = createStep({
       scout.instructions,
       scout.keywords,
       raw_results,
-      scout.quality_threshold
+      effectiveThreshold
     );
     
     const highRelevance = analyzed.filter(r => r.relevance_score >= 0.8).length;

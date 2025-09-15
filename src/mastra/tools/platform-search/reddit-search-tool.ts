@@ -9,8 +9,24 @@ export class RedditSearchTool extends BasePlatformSearchTool {
   platform = 'reddit';
 
   async search(strategy: SearchStrategy): Promise<PlatformSearchResult[]> {
+    console.log('=== DEBUG: Reddit search input ===');
+    console.log('Strategy:', JSON.stringify(strategy, null, 2));
+    
     const { search_params } = strategy;
+    
+    if (!search_params) {
+      throw new Error('Reddit search: Missing search_params in strategy');
+    }
+    
     const { subreddits, keywords, time_filter, sort, limit } = search_params;
+    
+    if (!subreddits || !Array.isArray(subreddits)) {
+      throw new Error('Reddit search: Missing or invalid subreddits array in search_params');
+    }
+    
+    if (!keywords || !Array.isArray(keywords)) {
+      throw new Error('Reddit search: Missing or invalid keywords array in search_params');
+    }
     
     const results: PlatformSearchResult[] = [];
     const client = getRedditClient();
