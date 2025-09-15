@@ -9,145 +9,166 @@ import {
   itchioGamesListSchema,
   ItchioSearchStrategy 
 } from './itchio-types';
+import { decideInvestigation } from '../../agents/investigation-decision-agent';
+import { decideStorage } from '../../agents/storage-decision-agent';
+import { Mastra } from '@mastra/core';
 
 export class ItchioSearchTool extends BasePlatformSearchTool {
   platform = 'itchio';
-  
-  // Helper method for structured logging - logs to both console and potential structured logger
-  private log(level: 'info' | 'warn' | 'error', message: string, metadata?: any) {
-    const logData = { platform: this.platform, ...metadata };
-    
-    // Structured logging format for console
-    if (level === 'info') {
-      console.log(`[Itch.io Search] ${message}`, logData);
-    } else if (level === 'warn') {
-      console.warn(`[Itch.io Search] ${message}`, logData);
-    } else {
-      console.error(`[Itch.io Search] ${message}`, logData);
-    }
-  }
 
-  async search(strategy: SearchStrategy): Promise<PlatformSearchResult[]> {
-    const { search_params } = strategy;
-    const { pages, keywords, detailed, maxResults, qualityThreshold } = search_params;
+  async search(strategy: SearchStrategy, mastra?: Mastra): Promise<PlatformSearchResult[]> {
+    const logger = mastra?.getLogger();
     
-    const results: PlatformSearchResult[] = [];
-    
-    this.log('info', 'Starting itch.io search', { 
-      pagesCount: pages.length,
-      keywords: keywords,
-      maxResults: maxResults,
-      qualityThreshold: qualityThreshold
+    logger?.info('Starting intelligent itch.io search', {
+      platform: this.platform,
+      strategy: strategy
     });
     
-    // Base URLs for different itch.io pages
-    const baseUrls = {
-      'games': 'https://itch.io/games',
-      'new-and-popular': 'https://itch.io/games/new-and-popular',
-      'newest': 'https://itch.io/games/newest'
-    };
+    const { search_params } = strategy;
     
-    for (const page of pages) {
-      try {
-        const url = baseUrls[page as keyof typeof baseUrls];
-        if (!url) {
-          this.log('warn', 'Unknown itch.io page', { page: page });
-          continue;
-        }
-
-        this.log('info', 'Scraping itch.io page', { page: page, url: url });
-        
-        // Use simple scrape with flexible schema - much faster and more reliable
-        const scrapeResult = await rateLimitedFirecrawl.scrapeWithDelay(url, {
-          formats: [{
-            type: "json",
-            prompt: "get any games you can find on this page",
-            schema: {
-              type: "object",
-              properties: {
-                games: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      title: { type: "string" },
-                      developer: { type: "string" },
-                      price: { type: "string" },
-                      description: { type: "string" },
-                      url: { type: "string" }
-                    }
-                  }
-                }
-              }
-            }
-          }]
-        });
-        
-        // Simple scrape returns json directly
-        if (scrapeResult?.json?.games) {
-          const games = scrapeResult.json.games;
-          this.log('info', 'Found games on page', { 
-            page: page,
-            gamesCount: games.length
-          });
-          
-          for (const game of games) {
-            // Apply keyword filtering
-            const matchesKeywords = this.matchesKeywords(game, keywords);
-            if (!matchesKeywords) continue;
-
-            const platformResult: PlatformSearchResult = {
-              platform: 'itchio',
-              source_url: game.url,
-              title: game.title,
-              content: this.normalizeContent(game.description),
-              author: game.developer,
-              author_url: `https://itch.io/profile/${game.developer.toLowerCase().replace(/\s+/g, '-')}`,
-              engagement_score: this.calculateEngagementScore({
-                downloads: game.downloads,
-                rating: game.rating,
-                price: game.price,
-                tags_count: game.tags?.length || 0
-              }),
-              metadata: {
-                price: game.price,
-                tags: game.tags || [],
-                platforms: game.platforms || [],
-                screenshots: game.screenshots || [],
-                downloads: game.downloads,
-                rating: game.rating,
-                created_date: game.createdDate,
-                page_source: page
-              },
-              created_at: new Date().toISOString()
-            };
-
-            results.push(platformResult);
-            
-            // Stop if we've reached maxResults
-            if (results.length >= maxResults) {
-              this.log('info', 'Reached maximum results limit', { maxResults: maxResults });
-              break;
-            }
-          }
-        } else {
-          this.log('warn', 'No games found on page or crawl failed', { page: page });
-        }
-        
-        // Stop if we've reached maxResults
-        if (results.length >= maxResults) break;
-        
-      } catch (error) {
-        this.log('error', 'Error scraping itch.io page', { 
-          page: page,
-          error: error instanceof Error ? error.message : String(error)
-        });
-        continue;
-      }
+    if (!search_params) {
+      throw new Error('Itch.io search: Missing search_params in strategy');
     }
     
-    this.log('info', 'Itch.io search completed', { totalResults: results.length });
-    return results;
+    // Extract scout instructions and keywords from strategy if available
+    const scoutInstructions = (strategy as any).instructions || 'Find indie games seeking publishing opportunities';
+    const scoutKeywords = (strategy as any).expanded_keywords || search_params.keywords || [];
+    
+    logger?.info('Starting two-step scraping process', {
+      platform: this.platform,
+      scoutInstructions,
+      keywords: scoutKeywords,
+      pages: search_params.pages
+    });
+    
+    try {
+      // STEP 1: Scrape game listings (fast, broad)
+      logger?.info('Step 1: Scraping game listings', { platform: this.platform });
+      const listings = await this.scrapeGameListings(strategy, mastra);
+      
+      if (listings.length === 0) {
+        logger?.warn('No game listings found', { platform: this.platform });
+        return [];
+      }
+      
+      logger?.info('Game listings found', { 
+        platform: this.platform,
+        count: listings.length 
+      });
+      
+      // STEP 2: AI decides which games to investigate (limit to 30-40% or max 10)
+      logger?.info('Step 2: Making investigation decisions', { platform: this.platform });
+      const maxInvestigations = Math.min(Math.ceil(listings.length * 0.4), 10);
+      
+      let investigationDecisions;
+      if (mastra) {
+        investigationDecisions = await decideInvestigation(
+          mastra,
+          scoutInstructions,
+          scoutKeywords,
+          listings,
+          maxInvestigations
+        );
+      } else {
+        // Fallback: select games with meaningful descriptions
+        investigationDecisions = listings.map(game => ({
+          gameUrl: game.url,
+          gameTitle: game.title,
+          shouldInvestigate: (game.description && game.description.length > 20) || false,
+          score: 0.6,
+          reasoning: 'Fallback selection - no Mastra instance available'
+        })).sort((a, b) => b.score - a.score).slice(0, maxInvestigations);
+      }
+      
+      const gamesToInvestigate = investigationDecisions
+        .filter(d => d.shouldInvestigate)
+        .map(d => d.gameUrl)
+        .filter(url => url && url.length > 0);
+      
+      logger?.info('Investigation decisions completed', {
+        platform: this.platform,
+        selected: gamesToInvestigate.length,
+        total: listings.length
+      });
+      
+      if (gamesToInvestigate.length === 0) {
+        logger?.warn('No games selected for investigation', { platform: this.platform });
+        return [];
+      }
+      
+      // STEP 3: Scrape detailed game data (slow, targeted)
+      logger?.info('Step 3: Scraping detailed game data', { platform: this.platform });
+      const detailedGames = await this.scrapeDetailedGames(gamesToInvestigate, mastra);
+      
+      if (detailedGames.length === 0) {
+        logger?.warn('No detailed games scraped successfully', { platform: this.platform });
+        return [];
+      }
+      
+      logger?.info('Detailed scraping completed', { 
+        platform: this.platform,
+        gamesScraped: detailedGames.length 
+      });
+      
+      // STEP 4: AI makes final storage decisions (with quality threshold 0.4)
+      logger?.info('Step 4: Making storage decisions', { platform: this.platform });
+      const qualityThreshold = 0.4; // Hard-coded for inclusivity
+      
+      let storageDecisions;
+      if (mastra) {
+        storageDecisions = await decideStorage(
+          mastra,
+          scoutInstructions,
+          scoutKeywords,
+          detailedGames,
+          qualityThreshold
+        );
+      } else {
+        // Fallback: approve all detailed games
+        storageDecisions = detailedGames.map(game => ({
+          gameUrl: game.url,
+          gameTitle: game.title,
+          shouldStore: true,
+          score: 0.6,
+          reasoning: 'Fallback approval - no Mastra instance available',
+          sentiment: 'positive'
+        }));
+      }
+      
+      const gamesToStore = detailedGames.filter(game => {
+        const decision = storageDecisions.find(d => d.gameUrl === game.url || d.gameTitle === game.title);
+        return decision?.shouldStore;
+      });
+      
+      logger?.info('Storage decisions completed', {
+        platform: this.platform,
+        approved: gamesToStore.length,
+        total: detailedGames.length
+      });
+      
+      // STEP 5: Convert to PlatformSearchResult format
+      logger?.info('Step 5: Converting to platform results', { platform: this.platform });
+      const platformResults = this.convertDetailedGamesToPlatformResults(gamesToStore, storageDecisions);
+      
+      logger?.info('Intelligent search completed', {
+        platform: this.platform,
+        totalListings: listings.length,
+        investigated: detailedGames.length,
+        finalResults: platformResults.length
+      });
+      
+      return platformResults;
+      
+    } catch (error) {
+      logger?.error('Error in intelligent search', {
+        platform: this.platform,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Fallback to basic search if intelligent search fails
+      logger?.info('Falling back to basic listing scrape', { platform: this.platform });
+      return this.basicSearch(strategy, mastra);
+    }
   }
 
   validateConfig(config: any): boolean {
@@ -159,10 +180,19 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
   }
 
   private matchesKeywords(game: ItchioGame, keywords: string[]): boolean {
+    // If no keywords specified, include all games
     if (!keywords || keywords.length === 0) return true;
     
+    // For indie game discovery, be more inclusive
+    // Don't require keyword match - this is handled by the AI agents later
+    // Just log if there's a match for debugging
     const searchText = `${game.title} ${game.description} ${game.tags?.join(' ') || ''}`.toLowerCase();
-    return keywords.some(keyword => searchText.includes(keyword.toLowerCase()));
+    const hasMatch = keywords.some(keyword => searchText.includes(keyword.toLowerCase()));
+    
+    // Keyword matching is logged at a debug level - removed for cleaner logs
+    
+    // Return true for all games - let the AI agents decide relevance
+    return true;
   }
 
   protected calculateEngagementScore(metadata: any): number {
@@ -201,13 +231,15 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
   /**
    * Step 1: Fast listing scrape - gets basic game info for decision making
    */
-  async scrapeGameListings(strategy: SearchStrategy): Promise<GameListing[]> {
+  async scrapeGameListings(strategy: SearchStrategy, mastra?: Mastra): Promise<GameListing[]> {
+    const logger = mastra?.getLogger();
     const { search_params } = strategy;
     const { pages, keywords, maxResults = 50 } = search_params;
     
     const listings: GameListing[] = [];
     
-    this.log('info', 'Starting intelligent itch.io listing scrape', { 
+    logger?.info('Starting listing scrape', { 
+      platform: this.platform,
       pagesCount: pages.length,
       keywords: keywords,
       maxResults: maxResults
@@ -226,11 +258,18 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
       try {
         const url = baseUrls[page as keyof typeof baseUrls];
         if (!url) {
-          this.log('warn', 'Unknown itch.io page', { page: page });
+          logger?.warn('Unknown page', { 
+            platform: this.platform,
+            page: page 
+          });
           continue;
         }
 
-        this.log('info', 'Scraping itch.io listings from page', { page: page, url: url });
+        logger?.info('Scraping listings from page', { 
+          platform: this.platform,
+          page: page, 
+          url: url 
+        });
         
         const listingSchema = {
           type: "object",
@@ -256,7 +295,7 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
           required: ["games"]
         };
 
-        const scrapeResult = await rateLimitedFirecrawl.scrapeWithDelay(url, {
+        const scrapeResult = await rateLimitedFirecrawl.scrapeWithDelay(url, mastra, {
           formats: [{
             type: "json",
             prompt: `Extract game listings from this itch.io page. For each game, get the title, developer, full URL to the game page, price, primary genre, and brief description. Focus on the most prominent games displayed.`,
@@ -266,7 +305,8 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
         
         if (scrapeResult?.json?.games) {
           const games = scrapeResult.json.games;
-          this.log('info', 'Found game listings on page', { 
+          logger?.info('Found game listings on page', { 
+            platform: this.platform,
             page: page,
             listingsCount: games.length
           });
@@ -295,19 +335,26 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
             
             // Stop if we've reached maxResults
             if (listings.length >= maxResults) {
-              this.log('info', 'Reached maximum listings limit', { maxResults: maxResults });
+              logger?.info('Reached maximum listings limit', { 
+                platform: this.platform,
+                maxResults: maxResults 
+              });
               break;
             }
           }
         } else {
-          this.log('warn', 'No game listings found on page or scrape failed', { page: page });
+          logger?.warn('No game listings found on page or scrape failed', { 
+            platform: this.platform,
+            page: page 
+          });
         }
         
         // Stop if we've reached maxResults
         if (listings.length >= maxResults) break;
         
       } catch (error) {
-        this.log('error', 'Error scraping itch.io listings from page', { 
+        logger?.error('Error scraping listings from page', { 
+          platform: this.platform,
           page: page,
           error: error instanceof Error ? error.message : String(error)
         });
@@ -315,17 +362,24 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
       }
     }
     
-    this.log('info', 'Listing scrape completed', { totalListings: listings.length });
+    logger?.info('Listing scrape completed', { 
+      platform: this.platform,
+      totalListings: listings.length 
+    });
     return listings;
   }
 
   /**
    * Step 2: Detailed scraping with comments - for selected games only
    */
-  async scrapeDetailedGames(gameUrls: string[]): Promise<DetailedGame[]> {
+  async scrapeDetailedGames(gameUrls: string[], mastra?: Mastra): Promise<DetailedGame[]> {
+    const logger = mastra?.getLogger();
     const detailedGames: DetailedGame[] = [];
     
-    this.log('info', 'Starting detailed scraping for selected games', { gamesCount: gameUrls.length });
+    logger?.info('Starting detailed scraping for selected games', { 
+      platform: this.platform,
+      gamesCount: gameUrls.length 
+    });
     
     const gameDetailSchema = {
       type: "object",
@@ -378,7 +432,8 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
       const gameUrl = gameUrls[i];
       
       try {
-        this.log('info', 'Processing game for detailed scraping', { 
+        logger?.info('Processing game for detailed scraping', { 
+          platform: this.platform,
           index: i + 1,
           total: gameUrls.length,
           gameUrl: gameUrl
@@ -386,11 +441,11 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
 
         // Rate limiting - wait 6 seconds between requests
         if (i > 0) {
-          this.log('info', 'Rate limiting: waiting 6 seconds');
+          logger?.info('Rate limiting: waiting 6 seconds', { platform: this.platform });
           await new Promise(resolve => setTimeout(resolve, 6000));
         }
 
-        const detailResult = await rateLimitedFirecrawl.scrapeWithDelay(gameUrl, {
+        const detailResult = await rateLimitedFirecrawl.scrapeWithDelay(gameUrl, mastra, {
           formats: [{
             type: "json",
             prompt: "Extract comprehensive game information from this itch.io game page. Include full description, screenshots, tags, rating, supported platforms, file size, and user comments. For comments, include author names, comment text, dates, and identify if comments are from the game developer. Limit to the 10-15 most recent comments.",
@@ -422,17 +477,22 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
           };
 
           detailedGames.push(detailedGame);
-          this.log('info', 'Successfully scraped detailed game', { 
+          logger?.info('Successfully scraped detailed game', { 
+            platform: this.platform,
             gameTitle: gameData.title,
             commentsCount: gameData.comments?.length || 0
           });
           
         } else {
-          this.log('warn', 'Failed to get detailed data for game', { gameUrl: gameUrl });
+          logger?.warn('Failed to get detailed data for game', { 
+            platform: this.platform,
+            gameUrl: gameUrl 
+          });
         }
 
       } catch (error) {
-        this.log('error', 'Error scraping detailed game', { 
+        logger?.error('Error scraping detailed game', { 
+          platform: this.platform,
           gameUrl: gameUrl,
           error: error instanceof Error ? error.message : String(error)
         });
@@ -440,12 +500,231 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
       }
     }
 
-    this.log('info', 'Detailed scraping completed', { 
+    logger?.info('Detailed scraping completed', { 
+      platform: this.platform,
       successful: detailedGames.length,
       total: gameUrls.length,
       successRate: `${((detailedGames.length / gameUrls.length) * 100).toFixed(1)}%`
     });
     return detailedGames;
+  }
+
+  /**
+   * Convert DetailedGame objects to PlatformSearchResult format
+   */
+  private convertDetailedGamesToPlatformResults(
+    detailedGames: DetailedGame[],
+    storageDecisions: any[]
+  ): PlatformSearchResult[] {
+    return detailedGames.map(game => {
+      const decision = storageDecisions.find(d => d.gameUrl === game.url || d.gameTitle === game.title);
+      
+      return {
+        platform: 'itchio',
+        source_url: game.url,
+        title: game.title,
+        content: this.normalizeContent(game.fullDescription || game.description),
+        author: game.developer,
+        author_url: `https://itch.io/profile/${game.developer.toLowerCase().replace(/\s+/g, '-')}`,
+        engagement_score: this.calculateEngagementScoreFromDetailedGame(game),
+        metadata: {
+          price: game.price,
+          genre: game.genre,
+          tags: game.tags || [],
+          platforms: game.platforms || [],
+          screenshots: game.screenshots || [],
+          downloads: game.downloadCount,
+          rating: game.rating,
+          release_date: game.releaseDate,
+          file_size: game.fileSize,
+          comments: game.comments || [],
+          comment_count: game.commentCount || 0,
+          has_comments: game.hasComments || false,
+          full_description: game.fullDescription,
+          // AI decision data
+          storage_score: decision?.score || 0,
+          storage_reasoning: decision?.reasoning || '',
+          sentiment: decision?.sentiment || 'neutral'
+        },
+        created_at: new Date().toISOString()
+      };
+    });
+  }
+
+  /**
+   * Calculate engagement score from detailed game data
+   */
+  private calculateEngagementScoreFromDetailedGame(game: DetailedGame): number {
+    let score = 0;
+    
+    // Download count scoring
+    const downloadNum = parseInt((game.downloadCount || '0').replace(/[^\d]/g, '')) || 0;
+    if (downloadNum > 10000) score += 40;
+    else if (downloadNum > 1000) score += 30;
+    else if (downloadNum > 100) score += 20;
+    else if (downloadNum > 10) score += 10;
+    
+    // Rating scoring (if available)
+    if (game.rating) {
+      const ratingNum = parseFloat(game.rating) || 0;
+      score += Math.round(ratingNum * 10); // Convert 5-star to 50-point scale
+    }
+    
+    // Comment engagement scoring
+    const commentCount = game.commentCount || 0;
+    if (commentCount > 50) score += 20;
+    else if (commentCount > 20) score += 15;
+    else if (commentCount > 10) score += 10;
+    else if (commentCount > 5) score += 5;
+    
+    // Content quality scoring
+    if (game.fullDescription && game.fullDescription.length > 500) score += 10;
+    if (game.screenshots && game.screenshots.length > 3) score += 5;
+    if (game.tags && game.tags.length > 5) score += 5;
+    
+    return Math.min(score, 100); // Cap at 100
+  }
+
+  /**
+   * Fallback basic search method (old behavior)
+   */
+  private async basicSearch(strategy: SearchStrategy, mastra?: Mastra): Promise<PlatformSearchResult[]> {
+    const logger = mastra?.getLogger();
+    const { search_params } = strategy;
+    const pages = search_params.pages || ['games', 'new-and-popular', 'newest'];
+    const keywords = search_params.keywords || [];
+    const maxResults = search_params.maxResults || 25;
+    
+    const results: PlatformSearchResult[] = [];
+    
+    logger?.info('Starting basic search (fallback mode)', { 
+      platform: this.platform,
+      pagesCount: pages.length,
+      keywords: keywords,
+      maxResults: maxResults
+    });
+    
+    // Base URLs for different itch.io pages
+    const baseUrls = {
+      'games': 'https://itch.io/games',
+      'new-and-popular': 'https://itch.io/games/new-and-popular',
+      'newest': 'https://itch.io/games/newest'
+    };
+    
+    for (const page of pages) {
+      try {
+        const url = baseUrls[page as keyof typeof baseUrls];
+        if (!url) {
+          logger?.warn('Unknown page', { 
+            platform: this.platform,
+            page: page 
+          });
+          continue;
+        }
+
+        logger?.info('Scraping page', { 
+          platform: this.platform,
+          page: page, 
+          url: url 
+        });
+        
+        const scrapeResult = await rateLimitedFirecrawl.scrapeWithDelay(url, mastra, {
+          formats: [{
+            type: "json",
+            prompt: "get any games you can find on this page",
+            schema: {
+              type: "object",
+              properties: {
+                games: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      title: { type: "string" },
+                      developer: { type: "string" },
+                      price: { type: "string" },
+                      description: { type: "string" },
+                      url: { type: "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }]
+        });
+        
+        if (scrapeResult?.json?.games) {
+          const games = scrapeResult.json.games;
+          logger?.info('Found games on page', { 
+            platform: this.platform,
+            page: page,
+            gamesCount: games.length
+          });
+          
+          for (const game of games) {
+            const matchesKeywords = this.matchesKeywords(game, keywords);
+            if (!matchesKeywords) continue;
+
+            const platformResult: PlatformSearchResult = {
+              platform: 'itchio',
+              source_url: game.url,
+              title: game.title,
+              content: this.normalizeContent(game.description),
+              author: game.developer,
+              author_url: `https://itch.io/profile/${game.developer.toLowerCase().replace(/\s+/g, '-')}`,
+              engagement_score: this.calculateEngagementScore({
+                downloads: game.downloads,
+                rating: game.rating,
+                price: game.price,
+                tags_count: game.tags?.length || 0
+              }),
+              metadata: {
+                price: game.price,
+                tags: game.tags || [],
+                platforms: game.platforms || [],
+                screenshots: game.screenshots || [],
+                downloads: game.downloads,
+                rating: game.rating,
+                created_date: game.createdDate,
+                page_source: page
+              },
+              created_at: new Date().toISOString()
+            };
+
+            results.push(platformResult);
+            
+            if (results.length >= maxResults) {
+              logger?.info('Reached maximum results limit', { 
+                platform: this.platform,
+                maxResults: maxResults 
+              });
+              break;
+            }
+          }
+        } else {
+          logger?.warn('No games found on page or crawl failed', { 
+            platform: this.platform,
+            page: page 
+          });
+        }
+        
+        if (results.length >= maxResults) break;
+        
+      } catch (error) {
+        logger?.error('Error scraping page', { 
+          platform: this.platform,
+          page: page,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        continue;
+      }
+    }
+    
+    logger?.info('Basic search completed', { 
+      platform: this.platform,
+      totalResults: results.length 
+    });
+    return results;
   }
 }
 
@@ -460,7 +739,7 @@ export const itchioSearchTool = createTool({
         keywords: z.array(z.string()),
         detailed: z.boolean().default(false),
         maxResults: z.number().default(25),
-        qualityThreshold: z.number().default(0.7)
+        qualityThreshold: z.number().default(0.4)
       }),
       expanded_keywords: z.array(z.string()),
       reasoning: z.string()
@@ -480,9 +759,9 @@ export const itchioSearchTool = createTool({
     })),
     total_searched: z.number()
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, mastra }) => {
     const tool = new ItchioSearchTool();
-    const results = await tool.search(context.strategy);
+    const results = await tool.search(context.strategy, mastra);
     
     return {
       results,

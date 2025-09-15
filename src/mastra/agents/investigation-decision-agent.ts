@@ -97,14 +97,24 @@ Return your decisions with scores and detailed reasoning for each game.`;
   });
 
   try {
-    const response = await investigationDecisionAgent.generate(prompt, {
-      experimental_output: decisionsSchema
+    const response = await investigationDecisionAgent.generateVNext(prompt, {
+      structuredOutput: {
+        schema: decisionsSchema
+      }
     });
 
-    if (!response.object?.decisions) {
+    logger.info('Investigation agent response received', {
+      responseType: typeof response,
+      responseKeys: response ? Object.keys(response) : [],
+      hasDecisions: !!response?.decisions,
+      responsePreview: JSON.stringify(response, null, 2).substring(0, 500)
+    });
+
+    if (!response?.decisions) {
       logger.warn('Investigation agent returned no decisions, using fallback logic', {
         gameCount: gameListings.length,
-        maxInvestigations
+        maxInvestigations,
+        response: response
       });
       // Fallback: investigate games with meaningful descriptions
       return gameListings.map(game => ({
@@ -116,7 +126,7 @@ Return your decisions with scores and detailed reasoning for each game.`;
       }));
     }
 
-    const decisions = response.object.decisions;
+    const decisions = response.decisions;
     
     // Sort by score descending and apply limit if specified
     const sortedDecisions = decisions.sort((a, b) => b.score - a.score);

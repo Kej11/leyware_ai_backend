@@ -411,7 +411,7 @@ export const steamSearchTool = createTool({
         keywords: z.array(z.string()),
         detailed: z.boolean().default(false),
         maxResults: z.number().default(25),
-        qualityThreshold: z.number().default(0.7)
+        qualityThreshold: z.number().default(0.4)
       }),
       expanded_keywords: z.array(z.string()),
       reasoning: z.string()
