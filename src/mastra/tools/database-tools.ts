@@ -217,6 +217,27 @@ export const batchStoreResultsTool = createTool({
     let totalStored = 0;
     
     try {
+      // Test database connection and table existence
+      try {
+        const tableCheck = await query(`
+          SELECT column_name, data_type 
+          FROM information_schema.columns 
+          WHERE table_name = 'scout_results' 
+          AND table_schema = 'public'
+          ORDER BY ordinal_position
+        `);
+        logger.info('Scout results table schema', { 
+          tableExists: tableCheck.rows.length > 0,
+          columns: tableCheck.rows.map(row => `${row.column_name}(${row.data_type})`),
+          runId: run_id 
+        });
+      } catch (schemaError) {
+        logger.error('Failed to check table schema', { 
+          error: schemaError instanceof Error ? schemaError.message : String(schemaError),
+          runId: run_id 
+        });
+      }
+
       for (const [index, batch] of batches.entries()) {
         // Update status to indicate we're storing results
         await execute(
@@ -230,7 +251,14 @@ export const batchStoreResultsTool = createTool({
           try {
             // Generate platform-specific external ID
             let externalId = '';
-            let platform = result.platform || 'reddit';
+            let platform = result.platform || 'itchio'; // Default to itchio for this workflow
+            
+            logger.info('Processing result for storage', {
+              resultTitle: result.title,
+              resultPlatform: result.platform,
+              detectedPlatform: platform,
+              runId: run_id
+            });
             
             if (platform === 'reddit') {
               externalId = result.metadata.post_id || `reddit_${Date.now()}_${Math.random()}`;
@@ -244,12 +272,12 @@ export const batchStoreResultsTool = createTool({
               externalId = `${platform}_${Date.now()}_${Math.random()}`;
             }
 
-            await execute(
+            const insertResult = await execute(
               `INSERT INTO scout_results (
-                "scoutId", "organizationId", platform, "externalId",
-                url, title, description, content, author, "authorUrl",
-                "engagementScore", "relevanceScore", "platformData", status, "foundAt",
-                "aiSummary", "aiConfidenceScore", "processedAt"
+                scoutid, organizationid, platform, externalid,
+                url, title, description, content, author, authorurl,
+                engagementscore, relevancescore, platformdata, status, foundat,
+                aisummary, aiconfidencescore, processedat
               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())`,
               [
                 scout_id,
@@ -271,13 +299,26 @@ export const batchStoreResultsTool = createTool({
                 result.relevance_score
               ]
             );
+            
+            logger.info('Successfully inserted result into database', {
+              resultTitle: result.title,
+              platform: platform,
+              externalId: externalId,
+              insertResult: insertResult,
+              runId: run_id
+            });
             totalStored++;
           } catch (error) {
             logger.error('Failed to insert result', { 
               runId: run_id,
               platform: platform,
               title: result.title,
-              error: error instanceof Error ? error.message : String(error)
+              author: result.author,
+              sourceUrl: result.source_url,
+              scoutId: scout_id,
+              organizationId: organization_id,
+              error: error instanceof Error ? error.message : String(error),
+              errorStack: error instanceof Error ? error.stack : undefined
             });
           }
         }
@@ -670,6 +711,148 @@ export const batchStoreDecisionsTool = createTool({
         success: false
       };
     }
+  }
+});
+
+export const directStoreResultsTool = createTool({
+  id: 'direct-store-results',
+  description: 'Direct database storage with extensive logging for debugging',
+  inputSchema: z.object({
+    scout_id: z.string(),
+    run_id: z.string(),
+    organization_id: z.string(),
+    results: z.array(z.object({
+      source_url: z.string(),
+      title: z.string(),
+      content: z.string(),
+      author: z.string(),
+      engagement_score: z.number(),
+      relevance_score: z.number(),
+      platform: z.string()
+    }))
+  }),
+  outputSchema: z.object({
+    total_stored: z.number(),
+    success: z.boolean(),
+    details: z.array(z.object({
+      title: z.string(),
+      success: z.boolean(),
+      error: z.string().optional()
+    }))
+  }),
+  execute: async ({ context, mastra }) => {
+    const { scout_id, run_id, organization_id, results } = context;
+    const logger = mastra.getLogger();
+    
+    logger.info('=== DIRECT STORE RESULTS DEBUGGING ===', {
+      scout_id,
+      run_id,
+      organization_id,
+      resultsCount: results.length
+    });
+    
+    if (!results || results.length === 0) {
+      logger.warn('No results provided to store');
+      return { total_stored: 0, success: true, details: [] };
+    }
+    
+    // Test database connection first
+    try {
+      const testQuery = await query('SELECT NOW() as current_time');
+      logger.info('Database connection test successful', { 
+        currentTime: testQuery.rows[0]?.current_time 
+      });
+    } catch (error) {
+      logger.error('Database connection test failed', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return { total_stored: 0, success: false, details: [] };
+    }
+    
+    let totalStored = 0;
+    const details = [];
+    
+    // Store each result individually with detailed logging
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      
+      logger.info(`Storing result ${i + 1}/${results.length}`, {
+        title: result.title,
+        platform: result.platform,
+        author: result.author,
+        url: result.source_url
+      });
+      
+      try {
+        // Generate external ID
+        const externalId = `${result.platform}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        const insertResult = await execute(
+          `INSERT INTO scout_results (
+            scoutid, organizationid, platform, externalid,
+            url, title, description, content, author,
+            engagementscore, relevancescore, platformdata, status,
+            foundat, aisummary, aiconfidencescore, processedat
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())`,
+          [
+            scout_id,
+            organization_id,
+            result.platform,
+            externalId,
+            result.source_url,
+            result.title,
+            result.content.substring(0, 200), // description (truncated)
+            result.content, // full content
+            result.author,
+            result.engagement_score,
+            result.relevance_score,
+            JSON.stringify({ simplified: true, debug: true }), // simple metadata
+            'new',
+            new Date().toISOString(), // foundat
+            'Direct storage test', // aisummary
+            result.relevance_score // aiconfidencescore
+          ]
+        );
+        
+        logger.info(`Successfully stored result ${i + 1}`, {
+          title: result.title,
+          externalId: externalId,
+          insertRowCount: insertResult.rowCount
+        });
+        
+        totalStored++;
+        details.push({
+          title: result.title,
+          success: true
+        });
+        
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to store result ${i + 1}`, {
+          title: result.title,
+          error: errorMsg,
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        
+        details.push({
+          title: result.title,
+          success: false,
+          error: errorMsg
+        });
+      }
+    }
+    
+    logger.info('=== DIRECT STORE RESULTS COMPLETE ===', {
+      totalStored,
+      totalAttempted: results.length,
+      successRate: `${((totalStored / results.length) * 100).toFixed(1)}%`
+    });
+    
+    return {
+      total_stored: totalStored,
+      success: totalStored > 0,
+      details
+    };
   }
 });
 
