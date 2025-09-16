@@ -253,13 +253,6 @@ export const batchStoreResultsTool = createTool({
             let externalId = '';
             let platform = result.platform || 'itchio'; // Default to itchio for this workflow
             
-            logger.info('Processing result for storage', {
-              resultTitle: result.title,
-              resultPlatform: result.platform,
-              detectedPlatform: platform,
-              runId: run_id
-            });
-            
             if (platform === 'reddit') {
               externalId = result.metadata.post_id || `reddit_${Date.now()}_${Math.random()}`;
             } else if (platform === 'itchio') {
@@ -271,13 +264,25 @@ export const batchStoreResultsTool = createTool({
             } else {
               externalId = `${platform}_${Date.now()}_${Math.random()}`;
             }
+            
+            logger.info('Processing result for storage', {
+              resultTitle: result.title,
+              resultPlatform: result.platform,
+              detectedPlatform: platform,
+              externalId: externalId,
+              sourceUrl: result.source_url,
+              author: result.author,
+              engagementScore: result.engagement_score,
+              relevanceScore: result.relevance_score,
+              runId: run_id
+            });
 
             const insertResult = await execute(
               `INSERT INTO scout_results (
-                scoutid, organizationid, platform, externalid,
-                url, title, description, content, author, authorurl,
-                engagementscore, relevancescore, platformdata, status, foundat,
-                aisummary, aiconfidencescore, processedat
+                "scoutId", "organizationId", platform, "externalId",
+                url, title, description, content, author, "authorUrl",
+                "engagementScore", "relevanceScore", "platformData", status, "foundAt",
+                "aiSummary", "aiConfidenceScore", "processedAt"
               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())`,
               [
                 scout_id,
@@ -458,9 +463,22 @@ export const storeGameWithCommentsTool = createTool({
     const logger = mastra.getLogger();
     
     try {
+      // First get the scout to determine the platform
+      const scout = await queryOne<{ platform: string }>(
+        `SELECT platform FROM scouts WHERE id = $1`,
+        [scout_id]
+      );
+      
+      if (!scout) {
+        throw new Error(`Scout not found with id: ${scout_id}`);
+      }
+      
+      const platform = scout.platform;
+      
       logger.info('Storing game with comments', { 
         gameTitle: game.title,
         developer: game.developer,
+        platform: platform,
         commentsCount: game.comments?.length || 0,
         decisionScore: decision.score,
         scoutId: scout_id
@@ -473,6 +491,9 @@ export const storeGameWithCommentsTool = createTool({
       // Calculate sentiment score from decision
       const sentimentScore = decision.sentiment === 'positive' ? 0.8 :
                            decision.sentiment === 'negative' ? 0.2 : 0.5;
+      
+      // Generate platform-specific external ID
+      const externalId = `${platform}_${game.url.split('/').pop() || Date.now()}_${Date.now()}`;
       
       // Store main game result using existing schema
       const resultId = await queryOne<{ id: string }>(
@@ -487,8 +508,8 @@ export const storeGameWithCommentsTool = createTool({
         [
           scout_id,
           organization_id,
-          'itchio',
-          `itchio_${game.url.split('/').pop()}_${Date.now()}`,
+          platform,
+          externalId,
           game.url,
           game.title,
           game.fullDescription?.substring(0, 500) || game.title,
