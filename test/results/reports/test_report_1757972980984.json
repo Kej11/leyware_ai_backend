@@ -1,0 +1,31 @@
+{
+  "testSummary": {
+    "startTime": "2025-09-15T21:49:40.981Z",
+    "endTime": "2025-09-15T21:49:40.984Z",
+    "totalDuration": "3ms",
+    "totalPhases": 0,
+    "successfulPhases": 0,
+    "failedPhases": 0,
+    "successRate": "NaN%"
+  },
+  "testConfiguration": {
+    "headless": false,
+    "debugMode": true,
+    "screenshotPath": "/Users/deetaylor/leyware_ai_backend/.conductor/test-script/test/results/screenshots",
+    "logsPath": "/Users/deetaylor/leyware_ai_backend/.conductor/test-script/test/results/logs",
+    "reportsPath": "/Users/deetaylor/leyware_ai_backend/.conductor/test-script/test/results/reports",
+    "testTimeout": 300000
+  },
+  "phaseResults": [],
+  "detailedResults": [],
+  "analysis": {
+    "agentPerformance": [
+      "No test results to analyze"
+    ],
+    "recommendations": [
+      "Compare agent decision quality against manual evaluation",
+      "Test with different AI providers to compare performance",
+      "Implement automated validation of agent discoveries"
+    ]
+  }
+}

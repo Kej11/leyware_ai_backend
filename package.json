@@ -4,6 +4,19 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:stagehand": "npx tsx test/run-test.ts",
+    "test:stagehand-direct": "npx tsx test/stagehand-agent-test.ts",
+    "test:simple": "npx tsx test/simple-agent-test.ts",
+    "test:structured": "npx tsx test/structured-agent-test.ts",
+    "test:extract": "npx tsx test/simple-extract-test.ts",
+    "test:extract-basic": "npx tsx test/extract-no-schema-test.ts",
+    "test:docs": "npx tsx test/docs-example-test.ts",
+    "test:observe": "npx tsx test/observe-act-workflow.ts",
+    "test:goto-extract": "npx tsx test/goto-extract-test.ts",
+    "test:price": "npx tsx test/price-extract-test.ts",
+    "scout": "npx tsx test/publisher-scout-mastra.ts",
+    "scout:mastra": "npx tsx test/run-publisher-scout.ts",
+    "publisher": "npx tsx test/publisher-scout-mastra.ts",
     "dev": "mastra dev",
     "build": "mastra build",
     "start": "mastra start"
@@ -18,6 +31,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.14",
+    "@browserbasehq/stagehand": "2.5.1-alpha-87505a3ee644fe6b3581a1c941e54762a4f3e5a1",
     "@mastra/core": "^0.16.3",
     "@mastra/loggers": "^0.10.11",
     "@mastra/memory": "^0.14.4",
@@ -26,12 +40,13 @@
     "@neondatabase/serverless": "^1.0.1",
     "ai": "^5.0.44",
     "dotenv": "^17.2.2",
-    "zod": "^4.1.8"
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@mastra/mcp-docs-server": "^0.13.21",
     "@types/node": "^24.4.0",
     "mastra": "^0.12.3",
+    "playwright": "^1.55.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.9.2"
   }
