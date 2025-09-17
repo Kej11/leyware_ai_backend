@@ -7,7 +7,12 @@ export function getFirecrawlClient(): FirecrawlApp {
   if (!firecrawlClient) {
     const apiKey = process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
-      throw new Error('FIRECRAWL_API_KEY environment variable is not set');
+      console.warn('FIRECRAWL_API_KEY environment variable is not set - Firecrawl features will be disabled');
+      // Return a mock client that throws errors when used
+      return {
+        scrapeUrl: () => { throw new Error('FIRECRAWL_API_KEY not configured'); },
+        search: () => { throw new Error('FIRECRAWL_API_KEY not configured'); }
+      } as any;
     }
     firecrawlClient = new FirecrawlApp({ apiKey });
   }
@@ -17,10 +22,18 @@ export function getFirecrawlClient(): FirecrawlApp {
 export class RateLimitedFirecrawl {
   private lastRequestTime = 0;
   private readonly delayMs = 6000; // 6 seconds between requests (10 requests/minute)
-  private firecrawl: FirecrawlApp;
+  private firecrawl: FirecrawlApp | null = null;
 
   constructor() {
-    this.firecrawl = getFirecrawlClient();
+    // Lazy initialization - only get client when actually needed
+    this.firecrawl = null;
+  }
+  
+  private ensureClient(): FirecrawlApp {
+    if (!this.firecrawl) {
+      this.firecrawl = getFirecrawlClient();
+    }
+    return this.firecrawl;
   }
 
   async scrapeWithDelay(url: string, mastra?: Mastra, options?: any): Promise<any> {
@@ -43,7 +56,8 @@ export class RateLimitedFirecrawl {
     try {
       logger?.info('Scraping URL', { url });
       // Use the correct v3 API method: scrape instead of scrapeUrl
-      const result = await this.firecrawl.scrape(url, options);
+      const firecrawl = this.ensureClient();
+      const result = await firecrawl.scrape(url, options);
       logger?.info('Successfully scraped URL', { url });
       return result;
     } catch (error: any) {
@@ -153,4 +167,15 @@ export class RateLimitedFirecrawl {
   }
 }
 
-export const rateLimitedFirecrawl = new RateLimitedFirecrawl();
+// Export a lazy-initialized singleton
+let _instance: RateLimitedFirecrawl | null = null;
+export const rateLimitedFirecrawl = {
+  scrapeWithDelay: async (...args: Parameters<RateLimitedFirecrawl['scrapeWithDelay']>) => {
+    if (!_instance) _instance = new RateLimitedFirecrawl();
+    return _instance.scrapeWithDelay(...args);
+  },
+  scrapeMultipleWithDelay: async (...args: Parameters<RateLimitedFirecrawl['scrapeMultipleWithDelay']>) => {
+    if (!_instance) _instance = new RateLimitedFirecrawl();
+    return _instance.scrapeMultipleWithDelay(...args);
+  }
+};

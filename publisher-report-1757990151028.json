@@ -1,0 +1,163 @@
+{
+  "metadata": {
+    "runDate": "2025-09-16T02:35:51.028Z",
+    "sources": [
+      "itch.io/games/new-and-popular",
+      "itch.io/games"
+    ]
+  },
+  "statistics": {
+    "totalScanned": 29,
+    "trending": 19,
+    "mainPage": 10,
+    "immediate": 6,
+    "highPriority": 5,
+    "watchList": 6
+  },
+  "immediateAction": [
+    {
+      "title": "Mr. Magpie's Harmless Card Game",
+      "developer": "Giant Light Studios",
+      "url": "https://Giant-Light-Studios.itch.io/mr-magpies-harmless-card-game",
+      "investmentThesis": "Professional presentation and polish, playable in browser increasing accessibility, clear genre appeal in card games with strong commercial viability and potential for expansions or sequels. Credible developer and good engagement as featured in new & popular.",
+      "recommendedDeal": "Equity stake with marketing and visibility support to scale audience reach.",
+      "expectedROI": "Projected 20-30% ROI within 12-18 months based on genre popularity and expansion potential.",
+      "firstContact": "Reach out via professional email highlighting interest in scaling the game with marketing support and discuss potential partnership terms."
+    },
+    {
+      "title": "Shredmill",
+      "developer": "Jamadoo Games",
+      "url": "https://Jamadoo-Games.itch.io/shredmill",
+      "investmentThesis": "Unique action game concept with skating on an endless crumbling loop, playable in browser for accessibility, strong community engagement as new & popular, active developer, strong visual hook and polish.",
+      "recommendedDeal": "Investment for polish, QA, and marketing support with revenue share or equity stake.",
+      "expectedROI": "Estimated 25-35% ROI within 12 months due to strong visual appeal and genre demand.",
+      "firstContact": "Contact developer expressing interest in supporting polish and marketing to broaden reach, propose initial call to discuss terms."
+    },
+    {
+      "title": "Happy Place: Chapter 1",
+      "developer": "Combo Bomb Games",
+      "url": "https://Combo-Bomb-Games.itch.io/happy-place-chapter-1",
+      "investmentThesis": "Adventure game with mystery theme, free to attract large player base, new & popular indicating good engagement, developer shows polish and potential for episodic content or sequels.",
+      "recommendedDeal": "Marketing partnership with option for future revenue share on episodic releases.",
+      "expectedROI": "Potential 15-25% ROI within 12 months if episodic content is successfully launched and monetized.",
+      "firstContact": "Approach developer with interest in marketing collaboration and discuss episodic content plans."
+    },
+    {
+      "title": "Frontline: War of Echoes 🚩",
+      "developer": "PUNKCAKE Délicieux 🥞",
+      "url": "https://PUNKCAKE-Delicieux.itch.io/frontline-war-of-echoes",
+      "investmentThesis": "Action game with unique capture the flag concept against oneself, paid game ($6) indicating commercial viability, new & popular with strong community interest, distinct brand identity, potential for marketing and polish support.",
+      "recommendedDeal": "Investment for marketing and polish with revenue share or equity stake.",
+      "expectedROI": "Projected 20-30% ROI within 12 months with increased visibility and player base expansion.",
+      "firstContact": "Reach out to developer highlighting marketing and polish support opportunities and propose partnership discussion."
+    },
+    {
+      "title": "Obsessed : Night Shift",
+      "developer": "Akhir Hayat Studio",
+      "url": "https://Akhir-Hayat-Studio.itch.io/obsessed-night-shift",
+      "investmentThesis": "Survival game with strong narrative hook and emotional storytelling, paid at $2.99 indicating commercial intent, credible developer, potential for marketing, localization, and polish to expand reach.",
+      "recommendedDeal": "Investment for marketing, localization, and polish with revenue share or equity stake.",
+      "expectedROI": "Estimated 15-25% ROI within 12-18 months based on niche appeal and narrative strength.",
+      "firstContact": "Contact developer expressing interest in supporting marketing and localization to broaden audience."
+    },
+    {
+      "title": "Frontline: War of Echoes",
+      "developer": "PUNKCAKE Délicieux 🥞",
+      "url": "https://PUNKCAKE-Delicieux.itch.io/frontline-war-of-echoes",
+      "investmentThesis": "Action game with unique twist on capture the flag, priced at $6 showing commercial intent, strong visual identity, potential for marketing and platform expansion.",
+      "recommendedDeal": "Investment for marketing and platform expansion with revenue share or equity stake.",
+      "expectedROI": "Projected 20-30% ROI within 12 months with increased visibility and platform reach.",
+      "firstContact": "Engage developer to discuss marketing and platform expansion support."
+    }
+  ],
+  "highPriority": [
+    {
+      "title": "Doki Doki Literature Club!",
+      "developer": "Team Salvato",
+      "url": "https://itch.io/g/3325",
+      "whyPriority": "Established visual novel with strong existing fanbase and franchise potential, ready for platform expansion.",
+      "nextSteps": "Conduct due diligence on current IP rights, platform expansion feasibility, and market demand for sequels or spin-offs."
+    },
+    {
+      "title": "The Resident",
+      "developer": "TNP GAMES",
+      "url": "https://itch.io/g/2945",
+      "whyPriority": "High quality short PSX-style horror game by one developer with low visibility, potential hidden gem.",
+      "nextSteps": "Evaluate marketing strategies, developer capacity, and potential for wider distribution."
+    },
+    {
+      "title": "ColourplayGames",
+      "developer": "ColourplayGames",
+      "url": "https://itch.io/g/2777",
+      "whyPriority": "Developer with multiple successful adventure game releases and consistent quality, ready for bigger projects with publisher support.",
+      "nextSteps": "Review past project performance, developer roadmap, and resource needs for scaling."
+    },
+    {
+      "title": "Two and a Half Studios",
+      "developer": "Two and a Half Studios",
+      "url": "https://itch.io/g/3601",
+      "whyPriority": "Proven developer with multiple successful visual novel releases and consistent quality, ready for bigger projects.",
+      "nextSteps": "Assess developer portfolio, project pipeline, and potential for franchise development."
+    },
+    {
+      "title": "racheldrawsthis",
+      "developer": "racheldrawsthis",
+      "url": "https://itch.io/g/3360",
+      "whyPriority": "Developer with multiple RPG horror/story games and consistent quality, opportunity to scale and expand audience.",
+      "nextSteps": "Analyze audience demographics, marketing needs, and potential for new IP development."
+    }
+  ],
+  "watchList": [
+    {
+      "title": "Hurry, Comrade!",
+      "developer": "duckmaniac",
+      "url": "https://duckmaniac.itch.io/hurry-comrade",
+      "whatToWatch": "Monitor engagement metrics such as player retention, community growth, and update frequency. Watch for potential expansion opportunities or platform ports that could increase reach."
+    },
+    {
+      "title": "Happy Place: Chapter 1",
+      "developer": "Combo Bomb Games",
+      "url": "https://Combo-Bomb-Games.itch.io/happy-place-chapter-1",
+      "whatToWatch": "Track player base growth, engagement with episodic content, and community feedback. Trigger action if episodic content is developed or monetization strategies are implemented."
+    },
+    {
+      "title": "Blue Room",
+      "developer": "CdZero",
+      "url": "https://CdZero.itch.io/blue-room",
+      "whatToWatch": "Watch accessibility metrics, player feedback on puzzle difficulty, and community engagement. Consider action if marketing or localization opportunities arise."
+    },
+    {
+      "title": "Mr. Magpie's Harmless Card Game",
+      "developer": "Giant Light Studios",
+      "url": "https://Giant-Light-Studios.itch.io/mr-magpies-harmless-card-game",
+      "whatToWatch": "Monitor popularity trends, player engagement, and community feedback. Trigger action if there is a significant increase in player base or demand for expansions."
+    },
+    {
+      "title": "Hurry, Comrade!",
+      "developer": "duckmaniac",
+      "url": "https://duckmaniac.itch.io/hurry-comrade",
+      "whatToWatch": "Observe niche market growth, update frequency, and player feedback. Consider action if marketing or platform expansion opportunities present."
+    },
+    {
+      "title": "Happy Place: Chapter 1",
+      "developer": "Combo Bomb Games",
+      "url": "https://Combo-Bomb-Games.itch.io/happy-place-chapter-1",
+      "whatToWatch": "Monitor episodic content development, player engagement, and monetization potential. Trigger action if new content or revenue streams emerge."
+    }
+  ],
+  "insights": {
+    "trends": [
+      "Strong presence of browser-playable games increasing accessibility and broad audience reach.",
+      "Popularity of narrative-driven games, especially in survival and adventure genres with emotional or mystery themes.",
+      "Emerging interest in unique gameplay concepts within action and simulation genres.",
+      "Growing market for visual novels and RPG horror/story games with established fanbases and franchise potential.",
+      "Increasing importance of marketing, polish, and localization support to scale indie games commercially."
+    ],
+    "redFlags": [
+      "Several games have medium risk levels indicating potential development or market risks that need mitigation.",
+      "Some opportunities show repeated entries which may indicate data duplication or overemphasis on certain titles.",
+      "Limited information on financials and user metrics beyond engagement tags, requiring deeper due diligence.",
+      "Potential portfolio gaps in multiplayer/networked games and high-budget AAA-style productions."
+    ]
+  }
+}

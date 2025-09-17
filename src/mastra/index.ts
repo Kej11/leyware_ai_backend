@@ -4,8 +4,10 @@ import { PostgresStore } from '@mastra/pg';
 import { scoutSearchWorkflow } from './workflows/scout-search-workflow';
 import { intelligentScoutWorkflow } from './workflows/intelligent-scout-workflow';
 import { redditScoutWorkflow } from './workflows/reddit-scout-workflow';
-import { itchioScoutWorkflow } from './workflows/itchio-scout-workflow';
+// import { itchioScoutWorkflow } from './workflows/itchio-scout-workflow'; // Old version - kept for reference
+import { itchioScoutWorkflowNew } from './workflows/itchio-scout-workflow-new'; // New AI-powered version
 import { steamScoutWorkflow } from './workflows/steam-scout-workflow';
+import { publisherScoutWorkflow } from './workflows/publisher-scout-workflow'; // Original publisher workflow
 import { searchPlanningAgent } from './agents/search-planning-agent';
 import { contentAnalysisAgent } from './agents/content-analysis-agent';
 import { scoutWorkflowAgent } from './agents/scout-workflow-agent';
@@ -17,8 +19,10 @@ export const mastra = new Mastra({
     scoutSearchWorkflow,
     intelligentScoutWorkflow,
     redditScoutWorkflow,
-    itchioScoutWorkflow,
-    steamScoutWorkflow
+    // itchioScoutWorkflow, // Old version - unassigned from scout agent
+    itchioScoutWorkflowNew, // New AI-powered version for itch.io
+    steamScoutWorkflow,
+    publisherScoutWorkflow // Kept for backward compatibility
   },
   agents: {
     searchPlanningAgent,
