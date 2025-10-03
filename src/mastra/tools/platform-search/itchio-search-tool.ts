@@ -3,14 +3,17 @@ import { z } from 'zod';
 import { BasePlatformSearchTool } from './base-search-tool';
 import { PlatformSearchResult, SearchStrategy, GameListing, DetailedGame } from '../../database/schemas';
 import { rateLimitedFirecrawl } from './firecrawl-client';
-import { 
-  ItchioSearchParams, 
-  ItchioGame, 
+import {
+  ItchioSearchParams,
+  ItchioGame,
   itchioGamesListSchema,
-  ItchioSearchStrategy 
+  ItchioSearchStrategy,
+  GENRE_URL_MAP,
+  ItchioGenre
 } from './itchio-types';
 import { decideInvestigation } from '../../agents/investigation-decision-agent';
 import { decideStorage } from '../../agents/storage-decision-agent';
+import { selectGenres } from '../../agents/genre-selection-agent';
 import { Mastra } from '@mastra/core';
 
 export class ItchioSearchTool extends BasePlatformSearchTool {
@@ -235,40 +238,100 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
     const logger = mastra?.getLogger();
     const { search_params } = strategy;
     const { pages, keywords, maxResults = 50 } = search_params;
-    
+
+    // Extract scout instructions for genre selection
+    const scoutInstructions = (strategy as any).instructions || '';
+    const scoutKeywords = (strategy as any).expanded_keywords || keywords || [];
+
     const listings: GameListing[] = [];
-    
-    logger?.info('Starting listing scrape', { 
+
+    logger?.info('Starting listing scrape', {
       platform: this.platform,
       pagesCount: pages.length,
       keywords: keywords,
-      maxResults: maxResults
+      maxResults: maxResults,
+      hasInstructions: !!scoutInstructions
     });
-    
-    // Base URLs for different itch.io pages
-    const baseUrls = {
-      'games': 'https://itch.io/games',
-      'new-and-popular': 'https://itch.io/games/new-and-popular',
-      'newest': 'https://itch.io/games/newest',
-      'top-sellers': 'https://itch.io/games/top-sellers',
-      'featured': 'https://itch.io/games/featured'
-    };
-    
-    for (const page of pages) {
-      try {
-        const url = baseUrls[page as keyof typeof baseUrls];
-        if (!url) {
-          logger?.warn('Unknown page', { 
-            platform: this.platform,
-            page: page 
-          });
-          continue;
-        }
 
-        logger?.info('Scraping listings from page', { 
+    // GENRE SELECTION: Try to identify specific genres from scout mission
+    let selectedGenres: ItchioGenre[] = [];
+    if (mastra && scoutInstructions) {
+      try {
+        logger?.info('Attempting genre selection from scout instructions', {
           platform: this.platform,
-          page: page, 
-          url: url 
+          instructionsPreview: scoutInstructions.substring(0, 100)
+        });
+
+        const genreSelections = await selectGenres(mastra, scoutInstructions, scoutKeywords);
+        selectedGenres = genreSelections.map(s => s.genre);
+
+        if (selectedGenres.length > 0) {
+          logger?.info('Genre selection successful', {
+            platform: this.platform,
+            selectedGenres,
+            confidences: genreSelections.map(s => s.confidence),
+            reasoning: genreSelections.map(s => s.reasoning)
+          });
+        } else {
+          logger?.info('No specific genres identified - using default pages', {
+            platform: this.platform
+          });
+        }
+      } catch (error) {
+        logger?.warn('Genre selection failed, falling back to default pages', {
+          platform: this.platform,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    // Build URLs to scrape: genre URLs if selected, otherwise default pages
+    const urlsToScrape: Array<{ url: string; source: string }> = [];
+
+    if (selectedGenres.length > 0) {
+      // Use genre-specific URLs
+      for (const genre of selectedGenres) {
+        urlsToScrape.push({
+          url: GENRE_URL_MAP[genre],
+          source: `genre-${genre}`
+        });
+      }
+
+      // Also add one default page for broader coverage
+      urlsToScrape.push({
+        url: 'https://itch.io/games/new-and-popular',
+        source: 'new-and-popular'
+      });
+    } else {
+      // Use default page-based URLs
+      const baseUrls = {
+        'games': 'https://itch.io/games',
+        'new-and-popular': 'https://itch.io/games/new-and-popular',
+        'newest': 'https://itch.io/games/newest',
+        'top-sellers': 'https://itch.io/games/top-sellers',
+        'featured': 'https://itch.io/games/featured'
+      };
+
+      for (const page of pages) {
+        const url = baseUrls[page as keyof typeof baseUrls];
+        if (url) {
+          urlsToScrape.push({ url, source: page });
+        }
+      }
+    }
+
+    logger?.info('URLs to scrape determined', {
+      platform: this.platform,
+      urlCount: urlsToScrape.length,
+      sources: urlsToScrape.map(u => u.source)
+    });
+
+    for (const { url, source } of urlsToScrape) {
+      try {
+        logger?.info('Scraping listings from URL', {
+          platform: this.platform,
+          source,
+          url
         });
         
         const listingSchema = {
@@ -305,9 +368,9 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
         
         if (scrapeResult?.json?.games) {
           const games = scrapeResult.json.games;
-          logger?.info('Found game listings on page', { 
+          logger?.info('Found game listings from source', {
             platform: this.platform,
-            page: page,
+            source,
             listingsCount: games.length
           });
           
@@ -343,19 +406,19 @@ export class ItchioSearchTool extends BasePlatformSearchTool {
             }
           }
         } else {
-          logger?.warn('No game listings found on page or scrape failed', { 
+          logger?.warn('No game listings found from source or scrape failed', {
             platform: this.platform,
-            page: page 
+            source
           });
         }
-        
+
         // Stop if we've reached maxResults
         if (listings.length >= maxResults) break;
-        
+
       } catch (error) {
-        logger?.error('Error scraping listings from page', { 
+        logger?.error('Error scraping listings from source', {
           platform: this.platform,
-          page: page,
+          source,
           error: error instanceof Error ? error.message : String(error)
         });
         continue;

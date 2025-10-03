@@ -1,7 +1,54 @@
 import { z } from 'zod';
 
+// Available itch.io genres from the genre filter
+export const ITCHIO_GENRES = [
+  'action',
+  'adventure',
+  'card-game',
+  'educational',
+  'fighting',
+  'interactive-fiction',
+  'platformer',
+  'puzzle',
+  'racing',
+  'rhythm',
+  'role-playing',
+  'shooter',
+  'simulation',
+  'sports',
+  'strategy',
+  'survival',
+  'visual-novel',
+  'other'
+] as const;
+
+export type ItchioGenre = typeof ITCHIO_GENRES[number];
+
+// Genre URL mapping - uses new-and-popular sorting to get fresh, trending games
+export const GENRE_URL_MAP: Record<ItchioGenre, string> = {
+  'action': 'https://itch.io/games/new-and-popular/genre-action',
+  'adventure': 'https://itch.io/games/new-and-popular/genre-adventure',
+  'card-game': 'https://itch.io/games/new-and-popular/genre-card-game',
+  'educational': 'https://itch.io/games/new-and-popular/genre-educational',
+  'fighting': 'https://itch.io/games/new-and-popular/genre-fighting',
+  'interactive-fiction': 'https://itch.io/games/new-and-popular/genre-interactive-fiction',
+  'platformer': 'https://itch.io/games/new-and-popular/genre-platformer',
+  'puzzle': 'https://itch.io/games/new-and-popular/genre-puzzle',
+  'racing': 'https://itch.io/games/new-and-popular/genre-racing',
+  'rhythm': 'https://itch.io/games/new-and-popular/genre-rhythm',
+  'role-playing': 'https://itch.io/games/new-and-popular/genre-role-playing',
+  'shooter': 'https://itch.io/games/new-and-popular/genre-shooter',
+  'simulation': 'https://itch.io/games/new-and-popular/genre-simulation',
+  'sports': 'https://itch.io/games/new-and-popular/genre-sports',
+  'strategy': 'https://itch.io/games/new-and-popular/genre-strategy',
+  'survival': 'https://itch.io/games/new-and-popular/genre-survival',
+  'visual-novel': 'https://itch.io/games/new-and-popular/genre-visual-novel',
+  'other': 'https://itch.io/games/new-and-popular/genre-other'
+};
+
 export interface ItchioSearchParams {
   pages: ('games' | 'new-and-popular' | 'newest')[];
+  genres?: ItchioGenre[]; // Optional genre-specific search
   keywords: string[];
   detailed: boolean;
   maxResults: number;
@@ -58,3 +105,18 @@ export const itchioSearchStrategySchema = z.object({
 export type ItchioSearchStrategy = z.infer<typeof itchioSearchStrategySchema>;
 export type ItchioGameData = z.infer<typeof itchioGameSchema>;
 export type ItchioGamesList = z.infer<typeof itchioGamesListSchema>;
+
+// Genre selection schema
+export interface GenreSelection {
+  genre: ItchioGenre;
+  confidence: number;
+  reasoning: string;
+}
+
+export const genreSelectionSchema = z.object({
+  selections: z.array(z.object({
+    genre: z.enum(ITCHIO_GENRES),
+    confidence: z.number().min(0).max(1).describe('Confidence score for this genre (0-1)'),
+    reasoning: z.string().describe('Why this genre matches the scout mission')
+  })).describe('Ranked list of relevant genres to search (up to 3)')
+});
