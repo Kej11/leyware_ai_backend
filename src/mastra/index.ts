@@ -13,6 +13,7 @@ import { contentAnalysisAgent } from './agents/content-analysis-agent';
 import { scoutWorkflowAgent } from './agents/scout-workflow-agent';
 import { investigationDecisionAgent } from './agents/investigation-decision-agent';
 import { storageDecisionAgent } from './agents/storage-decision-agent';
+import { genreSelectionAgent } from './agents/genre-selection-agent';
 
 export const mastra = new Mastra({
   workflows: { 
@@ -29,7 +30,8 @@ export const mastra = new Mastra({
     contentAnalysisAgent,
     scoutWorkflowAgent,
     investigationDecisionAgent,
-    storageDecisionAgent
+    storageDecisionAgent,
+    genreSelectionAgent
   },
   storage: new PostgresStore({
     connectionString: process.env.NEON_DATABASE_URL!,

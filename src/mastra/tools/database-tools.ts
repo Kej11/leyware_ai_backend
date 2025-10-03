@@ -387,9 +387,9 @@ export const finalizeScoutRunTool = createTool({
       const status = success ? 'completed' : 'failed';
       
       await execute(
-        `UPDATE scout_runs 
-         SET status = $1, "resultsFound" = $2, "resultsProcessed" = $3, 
-             "completedAt" = NOW(), "errorMessage" = $4
+        `UPDATE scout_runs
+         SET status = $1, "resultsFound" = $2, "resultsProcessed" = $3,
+             "completedAt" = NOW(), "errorMessage" = $4, "isRunning" = false
          WHERE id = $5`,
         [status, results_found, results_processed, error_message, run_id]
       );

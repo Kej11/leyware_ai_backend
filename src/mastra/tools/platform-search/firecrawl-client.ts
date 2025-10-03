@@ -7,12 +7,7 @@ export function getFirecrawlClient(): FirecrawlApp {
   if (!firecrawlClient) {
     const apiKey = process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
-      console.warn('FIRECRAWL_API_KEY environment variable is not set - Firecrawl features will be disabled');
-      // Return a mock client that throws errors when used
-      return {
-        scrapeUrl: () => { throw new Error('FIRECRAWL_API_KEY not configured'); },
-        search: () => { throw new Error('FIRECRAWL_API_KEY not configured'); }
-      } as any;
+      throw new Error('FIRECRAWL_API_KEY environment variable is required. Please set it in your .env file.');
     }
     firecrawlClient = new FirecrawlApp({ apiKey });
   }
@@ -100,7 +95,8 @@ export class RateLimitedFirecrawl {
     
     try {
       logger?.info('Crawling URL', { url });
-      const result = await this.firecrawl.crawl(url, options);
+      const firecrawl = this.ensureClient();
+      const result = await firecrawl.crawl(url, options);
       logger?.info('Successfully crawled URL', { url });
       return result;
     } catch (error: any) {
@@ -174,8 +170,12 @@ export const rateLimitedFirecrawl = {
     if (!_instance) _instance = new RateLimitedFirecrawl();
     return _instance.scrapeWithDelay(...args);
   },
-  scrapeMultipleWithDelay: async (...args: Parameters<RateLimitedFirecrawl['scrapeMultipleWithDelay']>) => {
+  crawlWithDelay: async (...args: Parameters<RateLimitedFirecrawl['crawlWithDelay']>) => {
     if (!_instance) _instance = new RateLimitedFirecrawl();
-    return _instance.scrapeMultipleWithDelay(...args);
+    return _instance.crawlWithDelay(...args);
+  },
+  batchScrape: async (...args: Parameters<RateLimitedFirecrawl['batchScrape']>) => {
+    if (!_instance) _instance = new RateLimitedFirecrawl();
+    return _instance.batchScrape(...args);
   }
 };

@@ -55,20 +55,29 @@ const scrapeGameListingsStep = createStep({
     });
     
     const searchTool = new ItchioSearchTool();
-    
-    // Create strategy for the two specific pages
+
+    // Create strategy with scout instructions for genre selection
     const strategy = {
       platform: 'itchio' as const,
+      instructions: scout.instructions,  // Pass instructions for genre selection
+      expanded_keywords: scout.keywords,  // Pass keywords for genre analysis
       search_params: {
-        keywords: [],  // No keyword filtering needed
-        pages: ['games', 'new-and-popular'],  // These map to the URLs requested
-        maxResults: 10  // 10 games per page
+        keywords: scout.keywords || [],
+        pages: ['games', 'new-and-popular'],  // Fallback pages if no genre selected
+        maxResults: scout.max_results || 10
       }
     };
-    
+
+    logger.info('Strategy created with genre selection support', {
+      runId: run_id,
+      hasInstructions: !!scout.instructions,
+      keywordCount: scout.keywords?.length || 0,
+      instructionsPreview: scout.instructions?.substring(0, 100)
+    });
+
     try {
-      // Use the search tool's scrapeGameListings method
-      const listings = await searchTool.scrapeGameListings(strategy);
+      // Use the search tool's scrapeGameListings method (will auto-select genres)
+      const listings = await searchTool.scrapeGameListings(strategy, mastra);
       
       logger.info('Successfully scraped game listings', {
         count: listings.length,
@@ -128,7 +137,7 @@ const scrapeDetailedGamesStep = createStep({
     
     try {
       // Use the search tool's scrapeDetailedGames method
-      const detailedGames = await searchTool.scrapeDetailedGames(gameUrls);
+      const detailedGames = await searchTool.scrapeDetailedGames(gameUrls, mastra);
       
       logger.info('Successfully scraped detailed game info', {
         count: detailedGames.length,
@@ -314,14 +323,15 @@ const storeGamesDirectlyStep = createStep({
       }
     }
     
-    // Update the scout run with final stats
+    // Update the scout run with final stats and set isRunning to false
     try {
       await execute(
-        `UPDATE scout_runs 
+        `UPDATE scout_runs
          SET status = 'completed',
              "resultsFound" = $2,
              "resultsProcessed" = $3,
-             "completedAt" = NOW()
+             "completedAt" = NOW(),
+             "isRunning" = false
          WHERE id = $1`,
         [run_id, detailedGames.length, totalStored]
       );
